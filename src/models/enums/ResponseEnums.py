@@ -10,3 +10,4 @@ class ResponseSignal(Enum):
 
     PROCESSING_SUCESS = "processing_success"
     PROCESSING_FAILED = "processing_failed"
+    NO_TEXT_IN_FILE = "no_text_in_file"
