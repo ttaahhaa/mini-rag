@@ -5,9 +5,12 @@ from helpers.config import get_settings, Settings
 from controllers import DataController, ProjectController, ProcessController
 from .schemas import ProcessRequest
 
-from models import DataChunkSchema
+from models import Asset
 from models import ProjectModel, ChunkModel
 from models import ResponseSignal
+from models.AssetModel import AssetModel
+from models import AssetTypeEnum
+from models import DataChunkSchema
 
 import aiofiles
 import logging
@@ -21,28 +24,7 @@ data_router = APIRouter(
 @data_router.post("/upload/{project_id}")
 async def upload_data(requset: Request, project_id: str, file: UploadFile,
                 app_settings: Settings = Depends(get_settings)):
-    """
-    Handle file upload for a given project, create the project if it does not exist,
-    and persist the uploaded file to the project directory.
 
-    The endpoint:
-    - Ensures a `Project` document exists for the provided `project_id`, creating one if needed.
-    - Validates the uploaded file using `DataController.validate_uploaded_file`.
-    - Generates a unique file path and ID under the project directory.
-    - Streams the file to disk in chunks of size `FILE_DEFAULT_CHUNK_SIZE` to avoid loading it fully in memory.
-    - Returns:
-        * 200 with a success signal and `file_id` when the file is stored successfully.
-        * 400 with an appropriate failure signal if validation fails or an I/O error occurs.
-
-    Args:
-        request: The incoming HTTP request, used to access the shared database client.
-        project_id: Logical identifier of the project to which the file will belong.
-        file: The uploaded file payload (multipart/form-data).
-        app_settings: Application settings dependency providing configuration such as chunk size.
-
-    Returns:
-        JSONResponse: A JSON response containing a status `signal` and, on success, the generated `file_id`.
-    """
     project_model = await ProjectModel.create_instance(db_client=requset.app.db_client)
     print(f"Project Model Initialized: {project_model}")
 
@@ -80,13 +62,22 @@ async def upload_data(requset: Request, project_id: str, file: UploadFile,
                 "signal": ResponseSignal.FILE_UPLOAD_FAILED.value
             }
         )
- 
+    # store the assets in the database
+    asset_model = await AssetModel.create_instance(db_client=requset.app.db_client)
+    asset_record = Asset(
+        asset_project_id= project.id,
+        asset_type=AssetTypeEnum.FILE.value,
+        asset_name=file_id,
+        asset_size=os.path.getsize(file_path)
+        )
+    asset_record = await asset_model.create_asset(asset=asset_record)
+
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={
             "signal": ResponseSignal.FILE_UPLOAD_SUCESS.value,
-            "file_id": file_id,
+            "file_id": str(asset_record.id),
         },
     )
     
