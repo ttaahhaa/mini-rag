@@ -7,8 +7,46 @@ from pymongo import InsertOne
 class ChunkModel(BaseDataModel):
     def __init__(self, db_client: object):
         super().__init__(db_client=db_client)
+        # This will not create a collection in the database until we perform an operation
         self.collection = db_client[DatabaseEnum.COLLECTION_CHUNK_NAME.value]
     
+    @classmethod
+    async def create_instance(cls, db_client: object):
+        """
+        Factory method to create an instance of ProjectModel and initialize the collection.
+        
+        :param db_client: The database client to interact with the database.
+        :return: An initialized instance of ProjectModel.
+        """
+        # here The Python object is ready, but the DB is still empty. We need to create the collection and indexes.
+        instance = cls(db_client)
+        # here we initialize the collection and indexes if not present
+        await instance.init_collection()
+        # here we return the ready-to-use instance
+        return instance
+    
+    async def init_collection(self):
+        """
+        Initialize the project collection in the database.
+        This method checks if the collection exists, and if not, creates it
+        along with the necessary indexes defined in the ProjectSchema.
+        
+        :param self: The instance of the ProjectModel class.
+        :return: None
+        """
+        # get the list of existing collections in the database, so it will be true only the first time we create the collection
+        all_collections = await self.db_client.list_collection_names()
+        if DatabaseEnum.COLLECTION_CHUNK_NAME.value not in all_collections:
+            self.collection = self.db_client[DatabaseEnum.COLLECTION_CHUNK_NAME.value]
+            indexes = DataChunkSchema.get_indexes()
+            for index in indexes:
+                await self.collection.create_index(
+                    index["key"],
+                    name=index["name"],
+                    unique=index["unique"],
+                )
+
+
     async def create_chunk(self, chunk: DataChunkSchema) -> str | None:
         # Use aliases, do not write logical id
         doc = chunk.model_dump(

@@ -1,0 +1,11 @@
+Here are the commands he used:
+
+To stop all running containers: sudo docker stop $(docker ps -aq)
+
+To remove all containers: sudo docker rm $(docker ps -aq)
+
+To remove all images: sudo docker rmi $(docker images -q)
+
+To remove all volumes: sudo docker volume rm $(docker volume ls -q)
+
+To prune the entire system (final cleanup): sudo docker system prune --all

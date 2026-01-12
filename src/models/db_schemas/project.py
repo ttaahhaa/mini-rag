@@ -24,3 +24,14 @@ class ProjectSchema(BaseModel):
         if not value.isalnum():
             raise ValueError("project ID must be a non-empty alphanumeric string")
         return value
+
+    @classmethod
+    def get_indexes(cls) ->list[dict]:
+        return[
+            {
+                "key": [("project_id", 1)], # ascending index
+                "name": "project_id_index_1", # index name
+                "unique": True, # enforce uniqueness
+                
+            }
+        ]
