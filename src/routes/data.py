@@ -43,7 +43,7 @@ async def upload_data(requset: Request, project_id: str, file: UploadFile,
     Returns:
         JSONResponse: A JSON response containing a status `signal` and, on success, the generated `file_id`.
     """
-    project_model = ProjectModel(db_client=requset.app.db_client)
+    project_model = await ProjectModel.create_instance(db_client=requset.app.db_client)
     print(f"Project Model Initialized: {project_model}")
 
     project = await project_model.get_project_or_create_one(project_id=project_id)
@@ -96,8 +96,8 @@ async def process_endpoint(request: Request,project_id: str, process_request: Pr
     chunk_size = process_request.chunk_size
     overlap_size = process_request.overlap_size
 
-    project_model = ProjectModel(db_client=request.app.db_client)
-    chunk_model = ChunkModel(db_client=request.app.db_client)
+    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
 
     project = await project_model.get_project_or_create_one(project_id=project_id)
     process_controller = ProcessController(project_id=project_id)

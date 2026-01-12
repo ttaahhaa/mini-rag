@@ -6,6 +6,39 @@ class ProjectModel(BaseDataModel):
     def __init__(self, db_client: object):
         super().__init__(db_client)
         self.collection = self.db_client[DatabaseEnum.COLLECTION_PROJECT_NAME.value]
+
+    @classmethod
+    async def create_instance(cls, db_client: object):
+        """
+        Factory method to create an instance of ProjectModel and initialize the collection.
+        
+        :param db_client: The database client to interact with the database.
+        :return: An initialized instance of ProjectModel.
+        """
+        instance = cls(db_client)
+        await instance.init_collection()
+        return instance
+
+    async def init_collection(self):
+        """
+        Initialize the project collection in the database.
+        This method checks if the collection exists, and if not, creates it
+        along with the necessary indexes defined in the ProjectSchema.
+        
+        :param self: The instance of the ProjectModel class.
+        :return: None
+        """
+        all_collections = await self.db_client.list_collection_names()
+        if DatabaseEnum.COLLECTION_PROJECT_NAME.value not in all_collections:
+            self.collection = self.db_client[DatabaseEnum.COLLECTION_PROJECT_NAME.value]
+            indexes = ProjectSchema.get_indexes()
+            for index in indexes:
+                await self.collection.create_index(
+                    index["key"],
+                    name=index["name"],
+                    unique=index["unique"],
+                )
+
     
     async def create_project(self, project: ProjectSchema):
         # 1. Convert Pydantic model to dict

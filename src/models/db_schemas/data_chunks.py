@@ -37,3 +37,14 @@ class DataChunkSchema(BaseModel):
         if value <= 0:
             raise ValueError("Chunk order must be a positive integer")
         return value
+    
+    @classmethod
+    def get_indexes(cls) ->list[dict]:
+        return[
+            {
+                "key": [("chunk_project_id", 1)], # ascending index
+                "name": "chunk_project_id_index_1", # index name
+                "unique": False, # no uniqueness constraint
+                
+            }
+        ]
