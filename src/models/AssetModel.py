@@ -12,9 +12,6 @@ class AssetModel(BaseDataModel):
     async def create_instance(cls, db_client: object):
         """
         Factory method to create an instance of AssetModel and initialize the collection.
-        
-        :param db_client: The database client to interact with the database.
-        :return: An initialized instance of AssetModel.
         """
         instance = cls(db_client)
         await instance.init_collection()
@@ -22,12 +19,7 @@ class AssetModel(BaseDataModel):
 
     async def init_collection(self):
         """
-        Initialize the asset collection in the database.
-        This method checks if the collection exists, and if not, creates it
-        along with the necessary indexes defined in the Asset schema.
-        
-        :param self: The instance of the AssetModel class.
-        :return: None
+        Ensures the collection and indexes exist.
         """
         all_collections = await self.db_client.list_collection_names()
         if DatabaseEnum.COLLECTION_ASSET_NAME.value not in all_collections:
@@ -41,24 +33,26 @@ class AssetModel(BaseDataModel):
                 )
     
     async def create_asset(self, asset: Asset):
-        # 1. Convert Pydantic model to dict
-        # dump using aliases so Mongo sees _id if present
+        """
+        Saves a new asset record to MongoDB.
+        """
         asset_dict = asset.model_dump(by_alias=True, exclude_unset=True)
-
-        # ensure we don’t send an _id if it's None
         asset_dict.pop("_id", None)
-
-        # 2. Insert into MongoDB
         result = await self.collection.insert_one(asset_dict)
-
-        # 3. Attach MongoDB _id to the model
-        asset.id = result.inserted_id  # <- use _id, not id
-
-        # 4. Return updated asset
+        asset.id = result.inserted_id 
         return asset
     
-    async def get_all_assets_by_project_id(self, project_id: str) -> list[Asset]:
-        return await self.collection.find(
-            {"asset_project_id": ObjectId(project_id)} if isinstance(project_id, str) else {"asset_project_id": project_id}
-        ).to_list(length=None) # fetch all matching documents and None means no limit
-      
+    async def get_all_project_assets(self, project_id: str, asset_type: str) -> list[Asset]:
+        """
+        Retrieves all assets for a project and maps them to Pydantic objects.
+        """
+        query = {
+            "asset_project_id": ObjectId(project_id) if isinstance(project_id, str) else project_id,
+            "asset_type": asset_type
+        }
+        
+        cursor = self.collection.find(query)
+        assets_dicts = await cursor.to_list(length=None) 
+        
+        # Mapping to Pydantic Asset objects for dot notation access
+        return [Asset(**asset_dict) for asset_dict in assets_dicts]
