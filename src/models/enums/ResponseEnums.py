@@ -13,3 +13,4 @@ class ResponseSignal(Enum):
     NO_TEXT_IN_FILE = "no_text_in_file"
 
     NO_FILES_IN_PROJECT = "no_files_in_project"
+    FILE_NOT_FOUND_IN_PROJECT = "file_not_found_in_project"

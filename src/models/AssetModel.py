@@ -56,3 +56,17 @@ class AssetModel(BaseDataModel):
         
         # Mapping to Pydantic Asset objects for dot notation access
         return [Asset(**asset_dict) for asset_dict in assets_dicts]
+    
+    async def get_asset_record(self, asset_project_id: str, asset_name: str) -> Asset | None:
+        """
+        Retrieves a single asset record by project ID and asset name.
+        """
+        query = {
+            "asset_project_id": ObjectId(asset_project_id) if isinstance(asset_project_id, str) else asset_project_id,
+            "asset_name": asset_name
+        }
+        
+        asset_dict = await self.collection.find_one(query)
+        if asset_dict:
+            return Asset(**asset_dict)
+        return None
