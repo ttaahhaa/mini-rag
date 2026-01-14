@@ -16,6 +16,7 @@ import aiofiles
 import logging
 
 logger = logging.getLogger('uvicorn.error')
+
 data_router = APIRouter(
     prefix="/api/v1/data",
     tags=["api_v1_data", "data"]
@@ -83,21 +84,33 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
     
     process_controller = ProcessController(project_id=project_id)
     
+    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+
     # Logic to identify which files to process
-    project_file_names = []
+    project_file_ids = {}
     if process_request.file_id:
-        project_file_names = [process_request.file_id]
+        asset_record = await asset_model.get_asset_record(
+            asset_project_id=project.id,
+            asset_name=process_request.file_id
+        )
+        if asset_record:
+            project_file_ids = {asset_record.id: asset_record.asset_name}
+        else:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"signal": ResponseSignal.FILE_NOT_FOUND_IN_PROJECT.value}
+    )
     else:
         # Retrieve all assets for the project if no specific file_id is provided
-        asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+        
         project_assets = await asset_model.get_all_project_assets(
             project_id=project.id,
             asset_type=AssetTypeEnum.FILE.value
         )
         # Using dot notation thanks to Pydantic mapping
-        project_file_names = [asset.asset_name for asset in project_assets]
+        project_file_ids = {asset.id: asset.asset_name for asset in project_assets}
     
-    if not project_file_names:
+    if not project_file_ids:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"signal": ResponseSignal.NO_FILES_IN_PROJECT.value}
@@ -109,10 +122,12 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
 
     total_inserted = 0
     # Process each file identified in the list
-    for file_name in project_file_names:
+    # Iterate over file IDs and names
+    for asset_id, file_name in project_file_ids.items():
         file_content = process_controller.get_file_content(file_id=file_name)
 
         if not file_content:
+            logger.warning(f"Skipping file {file_name}: unable to load content.")
             continue
 
         file_chunks = process_controller.process_file_content(
@@ -128,7 +143,9 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
                     chunk_text=chunk.page_content,
                     chunk_metadata=chunk.metadata,
                     chunk_order=i + 1,
-                    chunk_project_id=project.id)
+                    chunk_project_id=project.id,
+                    chunk_asset_id=asset_id
+                )
                 for i, chunk in enumerate(file_chunks)
             ]
             # Bulk insert chunks into MongoDB
@@ -138,6 +155,7 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
         status_code=status.HTTP_200_OK,
         content={
             "signal": ResponseSignal.PROCESSING_SUCESS.value,
-            "number_of_chunks": total_inserted
+            "number_of_chunks": total_inserted,
+            "processed_files": len(project_file_ids)
         },
     )

@@ -16,6 +16,7 @@ class DataChunkSchema(BaseModel):
     chunk_metadata: dict
     chunk_order: int = Field(..., gt=0)
     chunk_project_id: ObjectId
+    chunk_asset_id: Optional[ObjectId] = None
 
     @field_validator("chunk_text")
     @classmethod
