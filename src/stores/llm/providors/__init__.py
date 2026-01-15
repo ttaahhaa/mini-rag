@@ -1,2 +1,2 @@
-from .CohereProvidor import CohereProvidor
-from .OpenAIProvidor import OpenAIProvidor
+from .CohereProvider import CohereProvidor
+from .OpenAIProvider import OpenAIProvider

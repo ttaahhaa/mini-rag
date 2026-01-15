@@ -1,5 +1,6 @@
-from llm.providors import CohereProvidor, OpenAIProvidor
+from llm.providors import CohereProvidor
 from helpers.config import get_settings
+from stores.llm.providors import OpenAIProvider
 from .LLMEnums import LLMEnums
 from helpers.config import Settings
 class LLMProviderFactory:
@@ -8,7 +9,7 @@ class LLMProviderFactory:
 
     def create(self, provider_name: str):
         if provider_name == LLMEnums.OPENAI.value:
-            return OpenAIProvidor(
+            return OpenAIProvider(
                 api_key=self.config.OPENAI_API_KEY,
                 api_url=self.config.OPENAI_API_URL,
                 default_input_max_tokens=self.config.DEFAULT_INPUT_MAX_TOKENS,
