@@ -5,7 +5,7 @@ import cohere
 import logging
 
 
-class CohereProvider(LLMInterface):  # FIXED: Corrected spelling from "Providor" to "Provider"
+class CohereProvider(LLMInterface):
     """
     Concrete implementation of LLMInterface for Cohere API integration.
     Provides text generation and embedding capabilities using Cohere's models.

@@ -1,8 +1,7 @@
-from llm.providors import CohereProvidor
-from helpers.config import get_settings
-from stores.llm.providors import OpenAIProvider
+from llm.providers import CohereProvider, OpenAIProvider
 from .LLMEnums import LLMEnums
 from helpers.config import Settings
+
 class LLMProviderFactory:
     def __init__(self, config: Settings = None):
         self.config = config
@@ -17,7 +16,7 @@ class LLMProviderFactory:
                 temperature=self.config.DEFAULT_GENERATION_TEMPERATURE
             )
         elif provider_name == LLMEnums.COHERE.value:
-            return CohereProvidor(
+            return CohereProvider(
                 api_key=self.config.COHERE_API_KEY,
                 default_input_max_tokens=self.config.DEFAULT_INPUT_MAX_TOKENS,
                 defualt_output_max_tokens=self.config.DEFUALT_OUTPUT_MAX_TOKENS,
