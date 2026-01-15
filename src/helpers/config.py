@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     # App Settings
     APP_NAME: str
     APP_VERSION: str
-    OPENAI_KEY: str
 
     # File Settings
     FILE_ALLOWED_TYPES: list
@@ -29,6 +28,25 @@ class Settings(BaseSettings):
     # Database Settings
     MONGODB_URL: str
     MONGODB_DATABASE: str
+
+    # LLM Configurations
+    GENERATION_BACKEND: str = None
+    EMBEDDING_BACKEND: str = None
+
+    GENERATION_MODEL_ID: str = None
+    EMBEDDING_MODEL_ID: str = None
+    EMBEDDING_MODEL_SIZE: int = None
+
+    DEFAULT_INPUT_MAX_TOKENS: int = 1024
+    DEFUALT_OUTPUT_MAX_TOKENS: int = 200
+    DEFAULT_GENERATION_TEMPERATURE: float = 0.1
+
+    # OpenAI Configurations
+    OPENAI_API_KEY: str = None
+    OPENAI_API_URL: str = None
+
+    # Cohere Configurations
+    COHERE_API_KEY: str = None
 
     model_config = SettingsConfigDict(
         env_file=env_path,

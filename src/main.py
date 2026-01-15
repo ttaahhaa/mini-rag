@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager # 1. Import this
 from routes import base, data 
 from motor.motor_asyncio import AsyncIOMotorClient
 from helpers.config import get_settings
+from stores.llm.LLMProvidorFactory import LLMProviderFactory
 
 # 2. Define the lifespan logic
 @asynccontextmanager
@@ -15,6 +16,19 @@ async def lifespan(app: FastAPI):
     app.db_client = app.mongo_conn[settings.MONGODB_DATABASE]
     
     print("SUCCESS: MongoDB connection established.")
+
+    llm_provider_factory = LLMProviderFactory(config=settings)
+    # Initialize generation client
+    app.generation_client = llm_provider_factory.create(settings.GENERATION_BACKEND)
+    app.generation_client.set_generation_model(model_id=settings.GENERATION_MODEL_ID)
+
+    # Initialize embedding client
+    app.embedding_client = llm_provider_factory.create(settings.EMBEDDING_BACKEND)
+    app.embedding_client.set_embedding_model(
+        model_id=settings.EMBEDDING_MODEL_ID,
+        embedding_size=settings.EMBEDDING_MODEL_SIZE
+    )
+
 
     yield  # 3. This is where the app actually "runs"
 
