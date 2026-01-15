@@ -2,7 +2,7 @@ from ..LLMInterface import LLMInterface
 from openai import OpenAI
 from helpers.config import get_settings
 import logging
-FROM ..LLMEnums import LLMEnums, OpenAIEnums
+from LLMEnums import OpenAIEnums
 
 class OpenAIProvidor(LLMInterface):
     def __init__(self, api_key: str = None, api_url: str = None,
