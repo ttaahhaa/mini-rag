@@ -39,7 +39,15 @@ class VectorDBInterface(ABC):
             bool: True if collection exists, False otherwise
         """
         pass
-
+    @abstractmethod
+    def list_all_collections(self) -> list:
+        """
+        List all collections in the vector database.
+        
+        Returns:
+            list: A list of collection names
+        """
+        pass
     @abstractmethod
     def create_collection(self, collection_name: str, embedding_size: int,
                            do_reset: bool = False):
@@ -106,4 +114,8 @@ class VectorDBInterface(ABC):
         Args:
             collection_name (str): The name of the collection to delete
         """
+        pass
+
+    @abstractmethod
+    def search_by_vector(self, collection_name: str, vector: list, limit: int=5):
         pass

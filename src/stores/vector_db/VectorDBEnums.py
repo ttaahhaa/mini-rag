@@ -1,15 +1,19 @@
 from enum import Enum 
 
 class LLMEnums(Enum):
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    COHERE = "cohere"
-    CUSTOM = "custom"
+
+    QDRANT = "QDRANT"
+    AsyncQDRANT = "AsyncQDRANT"
+
+class DistanceMetricEnums(Enum):
+    COSINE = "cosine"
+    EUCLIDEAN = "euclidean"
+    DOT = "DOT"
 
 class OpenAIEnums(Enum):
     # Models
     GPT_3_5_TURBO = "gpt-3.5-turbo"
-    GPT_4_TURBO   = "gpt-4-turbo"   # or current recommended GPT‑4.x id
+    GPT_4_TURBO   = "gpt-4-turbo" 
     GPT_4O_MINI   = "gpt-4o-mini"
 
     # Message Roles
