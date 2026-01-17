@@ -2,6 +2,7 @@ from ..VectorDBInterface import VectorDBInterface
 from qdrant_client import QdrantClient, models
 import logging
 from ..VectorDBEnums import DistanceMetricEnums
+import uuid
 
 class QDrantProvider(VectorDBInterface):
     def __init__(self, db_path: str,
@@ -111,22 +112,26 @@ class QDrantProvider(VectorDBInterface):
         Includes try-except error handling as recommended in the tutorial.
         """
         self._ensure_connected()
-        # 1. Validation: Check if collection exists before attempting insert
+    
+        # 1. Validation: Check if collection exists
         if not self.is_collection_exists(collection_name):
             self.logger.error(f"Cannot insert: Collection '{collection_name}' does not exist.")
             return False
 
+        # 2. FIX: Ensure record_id is never None (prevents Pydantic ValidationError)
+        if record_id is None:
+            record_id = str(uuid.uuid4())
+
         try:
-            _ = self.client.upload_records(
+            _ = self.client.upload_points(
                 collection_name=collection_name,
-                records=[
+                points=[ 
                     models.Record(
-                        # If record_id is provided, use it; otherwise, Qdrant handles it
                         id=record_id,
                         vector=vector,
                         payload={
-                            "text": text,        # Essential for future retrieval
-                            "metadata": metadata # Optional additional context
+                            "text": text,
+                            "metadata": metadata
                         }
                     )
                 ]
@@ -209,9 +214,9 @@ class QDrantProvider(VectorDBInterface):
 
             try:
                 # Send the current batch to the database
-                self.client.upload_records(
+                self.client.upload_points(
                     collection_name=collection_name,
-                    records=batch_records,
+                    points=batch_records,
                 )
                 successful_batches += 1
             except Exception as e:
@@ -245,9 +250,10 @@ class QDrantProvider(VectorDBInterface):
                 self.logger.error(f"Cannot search: Collection '{collection_name}' does not exist.")
                 return []
             
-            return self.client.search(
+            # Use query_points instead of search for modern qdrant-client versions
+            return self.client.query_points(
                 collection_name=collection_name,
-                query_vector=vector,
+                query=vector,  # In query_points, the parameter name is 'query'
                 limit=limit
             )
         except Exception as e:

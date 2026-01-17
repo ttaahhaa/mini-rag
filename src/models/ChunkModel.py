@@ -99,12 +99,19 @@ class ChunkModel(BaseDataModel):
         return total_inserted
 
 
-    async def get_all_chunks_in_a_project(self, project_id: ObjectId):
-        records = await self.collection.find_many(
-        {"chunk_project_id": project_id})
-        if len(records) > 0:
-            return records
-        return None
+    async def get_all_chunks_in_a_project(self, project_id: ObjectId, page_no: int = 1, page_size: int = 50):
+        # Ensure page_no is valid
+        page_no = max(1, page_no)
+        skip_count = (page_no - 1) * page_size
+
+        # Fetch records with sorting for consistent pagination
+        cursor = self.collection.find({"chunk_project_id": project_id})
+        records = await cursor.sort("_id", 1).skip(skip_count).limit(page_size).to_list(length=page_size)
+        
+        return [
+            DataChunkSchema(**record)
+            for record in records
+        ]
 
     async def delete_a_chunk(self, chunk_id: str):
         result = await self.collection.find_one(chunk_id)
