@@ -54,5 +54,10 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    # VectorDB Configuration
+    VECTOR_DB_BACKEND: str
+    VECTOR_DB_NAME: str  # Database name (used to construct file paths)
+    VECTOR_DB_DISTANCE_METRIC: str = None
+    
 def get_settings():
     return Settings()
