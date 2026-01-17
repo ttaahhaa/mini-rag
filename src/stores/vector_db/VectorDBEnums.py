@@ -4,11 +4,13 @@ class LLMEnums(Enum):
 
     QDRANT = "QDRANT"
     AsyncQDRANT = "AsyncQDRANT"
+    MILVUS = "MILVUS"
+    AsyncMILVUS = "AsyncMILVUS"
 
 class DistanceMetricEnums(Enum):
     COSINE = "cosine"
     EUCLIDEAN = "euclidean"
-    DOT = "DOT"
+    DOT = "dot"
 
 class OpenAIEnums(Enum):
     # Models
@@ -29,4 +31,3 @@ class CohereEnums(Enum):
     
     DOCUMENT="search_document"
     QUERY="search_query"
-    

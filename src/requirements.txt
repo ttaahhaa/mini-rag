@@ -13,3 +13,4 @@ pymongo==4.16.0
 openai==2.15.0
 cohere==5.20.1
 qdrant-client==1.16.2
+pymilvus==2.6.6

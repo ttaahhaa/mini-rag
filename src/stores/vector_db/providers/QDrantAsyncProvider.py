@@ -1,11 +1,11 @@
 import uuid
 import logging
 import asyncio
-from qdrant_client import AsyncQdrantClient, models  # Using Async for scalability
-from ..VectorDBInterface import VectorDBInterface
+from qdrant_client import AsyncQdrantClient, models
+from ..VectorDBInterfaceAsync import VectorDBInterfaceAsync
 from ..VectorDBEnums import DistanceMetricEnums
 
-class QDrantAsyncProvider(VectorDBInterface):
+class QDrantAsyncProvider(VectorDBInterfaceAsync):
     """
     QDrantAsyncProvider (v2): An optimized, asynchronous implementation of the Qdrant 
     Vector Database provider for the mini-RAG project.
@@ -40,6 +40,11 @@ class QDrantAsyncProvider(VectorDBInterface):
         }
         self.distance_metric = metric_map.get(distance_metric, models.Distance.COSINE)
 
+    async def _ensure_connected(self):
+        """Internal helper to ensure client is connected before operations."""
+        if self.client is None:
+            raise RuntimeError("Client not connected. Call connect() first.")
+
     async def connect(self):
         """
         Establishes an asynchronous connection to Qdrant.
@@ -54,6 +59,10 @@ class QDrantAsyncProvider(VectorDBInterface):
 
     async def disconnect(self):
         """Gracefully closes the connection by nullifying the client."""
+        if self.client:
+            # AsyncQdrantClient should be closed properly if it has a close method
+            if hasattr(self.client, 'close'):
+                await self.client.close()
         self.client = None
         self.logger.info("Disconnected from Qdrant.")
 
@@ -62,6 +71,7 @@ class QDrantAsyncProvider(VectorDBInterface):
         Asynchronously checks if a collection exists.
         Returns: True if exists, False otherwise.
         """
+        await self._ensure_connected()
         try:
             return await self.client.collection_exists(collection_name)
         except Exception as e:
@@ -72,6 +82,7 @@ class QDrantAsyncProvider(VectorDBInterface):
         """
         Retrieves a list of all existing collection names in the database.
         """
+        await self._ensure_connected()
         try:
             collections_response = await self.client.get_collections()
             return [col.name for col in collections_response.collections]
@@ -84,6 +95,7 @@ class QDrantAsyncProvider(VectorDBInterface):
         Retrieves technical metadata about a specific collection.
         Returns: A dictionary/object containing collection details or None if failed.
         """
+        await self._ensure_connected()
         try:
             return await self.client.get_collection(collection_name=collection_name)
         except Exception as e:
@@ -94,6 +106,7 @@ class QDrantAsyncProvider(VectorDBInterface):
         """
         Permanently deletes a collection and its data.
         """
+        await self._ensure_connected()
         try:
             if await self.is_collection_exists(collection_name):
                 await self.client.delete_collection(collection_name=collection_name)
@@ -113,6 +126,7 @@ class QDrantAsyncProvider(VectorDBInterface):
             - on_disk (True): Raw vectors are stored on disk, keeping RAM free for fast indexing.
             - replication_factor (1): Standard for single nodes; increase for clusters.
         """
+        await self._ensure_connected()
         try:
             if do_reset:
                 await self.delete_collection(collection_name)
@@ -141,6 +155,7 @@ class QDrantAsyncProvider(VectorDBInterface):
         Inserts a single vector record. 
         Uses 'upload_records' to keep structure consistent with tutorial images.
         """
+        await self._ensure_connected()
         if not await self.is_collection_exists(collection_name):
             self.logger.error(f"Cannot insert: Collection '{collection_name}' not found.")
             return False
@@ -173,8 +188,22 @@ class QDrantAsyncProvider(VectorDBInterface):
             - Uses 'asyncio.gather' to send multiple batches to Qdrant concurrently.
             - Uses 'zip' for cleaner, more efficient record mapping.
         """
-        if metadatas is None: metadatas = [None] * len(texts)
-        if record_ids is None: record_ids = [None] * len(texts)
+        await self._ensure_connected()
+        
+        # Validation: Check if collection exists before attempting insert
+        if not await self.is_collection_exists(collection_name):
+            self.logger.error(f"Cannot insert: Collection '{collection_name}' does not exist.")
+            return False
+        
+        if metadatas is None: 
+            metadatas = [None] * len(texts)
+        if record_ids is None: 
+            record_ids = [None] * len(texts)
+
+        # Validate input lengths match
+        if not (len(texts) == len(vectors) == len(metadatas) == len(record_ids)):
+            self.logger.error("Input lists must have the same length")
+            return False
 
         tasks = []
         for i in range(0, len(texts), batch_size):
@@ -200,9 +229,20 @@ class QDrantAsyncProvider(VectorDBInterface):
         # CONCURRENCY POWER: Execute all batch upload tasks at the same time
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
+        successful_batches = 0
         for idx, res in enumerate(results):
             if isinstance(res, Exception):
                 self.logger.error(f"Batch processing failed at batch index {idx}: {res}")
+            else:
+                successful_batches += 1
+        
+        total_batches = len(tasks)
+        if successful_batches == 0:
+            self.logger.error(f"All {total_batches} batches failed for collection '{collection_name}'")
+            return False
+        
+        if successful_batches < total_batches:
+            self.logger.warning(f"Only {successful_batches}/{total_batches} batches succeeded for collection '{collection_name}'")
         
         return True
 
@@ -211,7 +251,12 @@ class QDrantAsyncProvider(VectorDBInterface):
         Performs an asynchronous semantic search.
         Returns: Top 'limit' most similar points found.
         """
+        await self._ensure_connected()
         try:
+            if not await self.is_collection_exists(collection_name):
+                self.logger.error(f"Cannot search: Collection '{collection_name}' does not exist.")
+                return []
+            
             return await self.client.search(
                 collection_name=collection_name,
                 query_vector=vector,

@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # VectorDB Configuration
     VECTOR_DB_BACKEND: str
-    VECTOR_DB_PATH: str
+    VECTOR_DB_NAME: str  # Database name (used to construct file paths)
     VECTOR_DB_DISTANCE_METRIC: str = None
     
 def get_settings():
