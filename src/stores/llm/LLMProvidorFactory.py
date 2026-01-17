@@ -1,4 +1,4 @@
-from llm.providers import CohereProvider, OpenAIProvider
+from ..llm.providers import CohereProvider, OpenAIProvider
 from .LLMEnums import LLMEnums
 from helpers.config import Settings
 
@@ -19,7 +19,7 @@ class LLMProviderFactory:
             return CohereProvider(
                 api_key=self.config.COHERE_API_KEY,
                 default_input_max_tokens=self.config.DEFAULT_INPUT_MAX_TOKENS,
-                defualt_output_max_tokens=self.config.DEFUALT_OUTPUT_MAX_TOKENS,
+                default_output_max_tokens=self.config.DEFUALT_OUTPUT_MAX_TOKENS,
                 temperature=self.config.DEFAULT_GENERATION_TEMPERATURE
             )
          

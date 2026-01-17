@@ -1,5 +1,5 @@
 from ..LLMInterface import LLMInterface
-from ..LLMEnums import CohereEnums, LLMEnums
+from ..LLMEnums import CohereEnums, DocumentTypeEnum, LLMEnums
 from helpers.config import get_settings
 import cohere
 import logging
@@ -112,46 +112,45 @@ class CohereProvider(LLMInterface):
             return None
         return response.text
 
-    def embed_text(self, text, document_type = None) -> list[float]:
+    def embed_text(self, text, document_type=None) -> list[float]:
         """
         Generate embedding vector for text using Cohere's embed endpoint.
-        Cohere optimizes embeddings differently for documents vs queries.
-        
-        Args:
-            text: Text to convert to embedding vector
-            document_type: LLMEnums.QUERY for search queries, otherwise treated as document
-            
-        Returns:
-            List of floats representing the embedding vector, or None if error
         """
-        # Validate client is initialized
+        # 1. Validation Logic
         if not self.client:
             self.logger.error(f"Cohere Client was not set")
             return None
         
-        # Validate embedding model is configured
         if not self.embedding_model_id:
             self.logger.error(f"Embedding model for Cohere was not set")
             return None
+
+        # 2. Map internal types to Cohere-specific strings
+        # Cohere V3+ requires: "search_document", "search_query", etc.
+        cohere_input_type = CohereEnums.DOCUMENT.value # Default: "search_document"
         
-        # Determine input type - Cohere uses different optimization for documents vs queries
-        input_type = CohereEnums.DOCUMNET  # Default: document for indexing
-        if document_type == LLMEnums.QUERY:
-            input_type = CohereEnums.QUERY  # Use query optimization for search
+        if document_type == DocumentTypeEnum.QUERY:
+            cohere_input_type = CohereEnums.QUERY.value # "search_query"
         
-        # Call Cohere's embed API
-        response = self.client.embed(
-            model=self.embedding_model_id,           # Embedding model to use
-            texts=[self.process_text(text)],         # Text to embed (as list, truncated to max tokens)
-            input_type=input_type,                   # "search_document" or "search_query"
-            embedding_types=["float"]                # Return format (float32 vectors)
-        )
-        
-        # FIXED: Corrected logic - added "not" before response.embeddings.float
-        if not response or not response.embeddings or not response.embeddings.float:
-            self.logger.error(f"Failed to get embeddings from Cohere for text")
+        # 3. Call Cohere's embed API
+        try:
+            response = self.client.embed(
+                model=self.embedding_model_id,
+                texts=[self.process_text(text)],
+                input_type=cohere_input_type, # Passing the string value
+                embedding_types=["float"]
+            )
+            
+            # 4. Check response and return first (and only) embedding
+            if not response or not response.embeddings or not response.embeddings.float:
+                self.logger.error(f"Failed to get embeddings from Cohere for text")
+                return None
+                
+            return response.embeddings.float[0]
+            
+        except Exception as e:
+            self.logger.error(f"Error during Cohere embedding: {str(e)}")
             return None
-        return response.embeddings.float[0]  # Return first (and only) embedding
 
     def construct_prompt(self, prompt: str, role: str = "user") -> dict:
         """

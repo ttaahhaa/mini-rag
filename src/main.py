@@ -37,11 +37,13 @@ async def lifespan(app: FastAPI):
 
     yield  # 3. This is where the app actually "runs"
 
-    # --- Shutdown Logic ---
+   # --- Shutdown ---
     app.mongo_conn.close()
     print("SUCCESS: MongoDB connection closed.")
 
-    app.vector_db.disconnect()
+    if hasattr(app, 'vectordb_client'):
+        app.vectordb_client.disconnect()
+        print("SUCCESS: VectorDB connection closed.")
 
 # 4. Pass the lifespan function to the FastAPI instance
 app = FastAPI(lifespan=lifespan)

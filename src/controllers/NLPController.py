@@ -1,6 +1,10 @@
 from .BaseController import BaseController
 from models import ResponseSignal
-from models.db_schemas import ProjectSchema
+from models.db_schemas import ProjectSchema, DataChunkSchema
+from stores.llm.LLMEnums import DocumentTypeEnum
+from typing import List
+import json 
+
 class NLPController(BaseController):
     def __init__(self, generation_client, embedding_client, vectordb_client):
         super().__init__()
@@ -17,9 +21,71 @@ class NLPController(BaseController):
         collection_name = self.create_collection_name(project_id=project.project_id)
         return self.vectordb_client.delete_collection(collection_name=collection_name)
     
-    def get_vector_collection_info(self, collection_name, project: ProjectSchema):
+    def get_vector_collection_info(self, project: ProjectSchema):
         collection_name = self.create_collection_name(project_id=project.project_id)
         collection_info = self.vectordb_client.get_collection_info(collection_name=collection_name)
-        return collection_info
+        return json.loads(
+            json.dumps(collection_info, default=lambda x: x.__dict__)
+        )
     
+    def index_into_vector_db(self, project: ProjectSchema,
+                              chunks: List[DataChunkSchema],
+                              chunks_ids: List[int],
+                              do_reset: bool = False
+                             ):
+        # step1: get collection name
+        collection_name = self.create_collection_name(project_id=project.project_id)
+        # step2: manage items 
+        texts = [c.chunk_text for c in chunks ]
+        metadata = [i.chunk_metadata for i in chunks]
+        vectors = [
+            self.embedding_client.embed_text(text=text,
+                                              document_type=DocumentTypeEnum.DOCUMENT.value)
+            for text in texts
+        ]
+
+        # step3: create collection if not exist
+        _ = self.vectordb_client.create_collection(collection_name=collection_name,
+                                               embedding_size=self.embedding_client.embedding_size,
+                                               do_reset=do_reset)
+        # step4: insert into vector db 
+
+        # def insert_many(self, collection_name: str, texts: list,
+        #             vectors: list, metadatas: list = None,
+        #             record_ids: list = None, batch_size: int = 5)
+
+        _ = self.vectordb_client.insert_many(
+            collection_name=collection_name,
+            texts = texts,
+            vectors=vectors,
+            metadatas=metadata,
+            record_ids=chunks_ids
+        )
     
+        return True
+    
+    def search_vector_db_collection(self, project: ProjectSchema, text: str, limit: int = 10):
+
+        # step1: get collection name
+        collection_name = self.create_collection_name(project_id=project.project_id)
+
+        # step2: get text embedding vector
+        vector = self.embedding_client.embed_text(text=text,
+                                                document_type=DocumentTypeEnum.QUERY.value)
+
+        if not vector or len(vector) == 0:
+            return False
+
+        # step3: do semantic search
+        results = self.vectordb_client.search_by_vector(
+            collection_name=collection_name,
+            vector=vector,
+            limit=limit
+        )
+
+        if not results:
+            return False
+
+        return json.loads(
+            json.dumps(results, default=lambda x: x.__dict__)
+        )
