@@ -152,6 +152,33 @@ class CohereProvider(LLMInterface):
             self.logger.error(f"Error during Cohere embedding: {str(e)}")
             return None
 
+    def embed_batch(self, texts: list[str], document_type=None) -> list[list[float]]:
+        """
+        Optimized: Generates embeddings for a list of texts in a single API call.
+        """
+        if not self.client or not self.embedding_model_id:
+            self.logger.error("Cohere Client or Model not set")
+            return None
+
+        cohere_input_type = CohereEnums.DOCUMENT.value
+        if document_type == DocumentTypeEnum.QUERY:
+            cohere_input_type = CohereEnums.QUERY.value
+        
+        # Process all texts (truncation/cleaning)
+        processed_texts = [self.process_text(t) for t in texts]
+
+        try:
+            response = self.client.embed(
+                model=self.embedding_model_id,
+                texts=processed_texts,
+                input_type=cohere_input_type,
+                embedding_types=["float"]
+            )
+            return response.embeddings.float # Returns a list of vectors
+        except Exception as e:
+            self.logger.error(f"Batch embedding error: {str(e)}")
+            return None
+    
     def construct_prompt(self, prompt: str, role: str = "user") -> dict:
         """
         Format prompt as Cohere-compatible message dictionary.

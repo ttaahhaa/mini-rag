@@ -165,6 +165,27 @@ class OpenAIProvider(LLMInterface):
         
         return response.data[0].embedding  # Return the embedding vector
     
+    def embed_batch(self, texts: list[str], document_type=None) -> list[list[float]]:
+        """
+        Optimized: Generates embeddings for a list of texts in a single API call.
+        """
+        if not self.client or not self.embedding_model_id:
+            self.logger.error("OpenAI Client or Model not set")
+            return None
+
+        processed_texts = [self.process_text(t) for t in texts]
+
+        try:
+            response = self.client.embeddings.create(
+                input=processed_texts,
+                model=self.embedding_model_id
+            )
+            # Extract the list of embeddings from the data objects
+            return [item.embedding for item in response.data]
+        except Exception as e:
+            self.logger.error(f"OpenAI Batch embedding error: {str(e)}")
+            return None
+    
     def construct_prompt(self, prompt: str, role: str = "user") -> dict:
         """
         Format prompt as OpenAI-compatible message dictionary.
