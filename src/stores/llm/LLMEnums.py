@@ -4,7 +4,10 @@ class LLMEnums(Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     COHERE = "cohere"
-    CUSTOM = "custom"
+    QDRANT = "QDRANT"
+    AsyncQDRANT = "AsyncQDRANT"
+    MILVUS = "MILVUS"
+    AsyncMILVUS = "AsyncMILVUS"
 
 class OpenAIEnums(Enum):
     SYSTEM = "system"

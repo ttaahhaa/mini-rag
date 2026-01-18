@@ -4,6 +4,7 @@ import os
 from pymilvus import MilvusClient
 from ..VectorDBInterfaceAsync import VectorDBInterfaceAsync
 from ..VectorDBEnums import DistanceMetricEnums
+from models.db_schemas import RettrievedDocument
 
 class MilvusAsyncProvider(VectorDBInterfaceAsync):
     """
@@ -313,15 +314,21 @@ class MilvusAsyncProvider(VectorDBInterfaceAsync):
     
     async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5):
         """
-        Search for similar vectors in a collection.
-        
+        Asynchronously searches for similar vectors in a Milvus collection.
+
+        This method wraps the synchronous Milvus search call in a thread to maintain 
+        async compatibility. It retrieves the associated text and maps the output 
+        to the project's standardized 'RettrievedDocument' schema.
+
         Args:
-            collection_name (str): The name of the collection to search in
-            vector (list): The query vector (list of floats)
-            limit (int): Maximum number of results to return (default: 5)
-            
+            collection_name (str): The name of the collection to search in.
+            vector (list): The query embedding vector (list of floats).
+            limit (int, optional): Maximum number of results to return. Defaults to 5.
+
         Returns:
-            list: List of search results with scores and payloads, normalized to match Qdrant format
+            list[RettrievedDocument]: A list of retrieved documents with their text 
+                and similarity/distance scores. Returns an empty list [] if no 
+                results are found or if an error occurs.
         """
         await self._ensure_connected()
         try:
@@ -329,34 +336,29 @@ class MilvusAsyncProvider(VectorDBInterfaceAsync):
                 self.logger.error(f"Cannot search: Collection '{collection_name}' does not exist.")
                 return []
             
-            # Milvus search returns results in format:
-            # [{"id": x, "distance": y, "entity": {"text": "...", "metadata": {...}}}]
+            # 1. Perform the search in a separate thread to avoid blocking
+            # Milvus returns: [[{'id': 1, 'distance': 0.9, 'entity': {...}}, ...]]
             results = await asyncio.to_thread(
                 self.client.search,
                 collection_name=collection_name,
-                data=[vector],  # Milvus expects a list of vectors
+                data=[vector], 
                 limit=limit,
                 output_fields=["text", "metadata"]
             )
             
-            # Normalize results to match Qdrant format
-            # Qdrant returns: [ScoredPoint(id=..., score=..., payload={...})]
-            # We'll convert to a similar dict format for consistency
-            normalized_results = []
-            if results and len(results) > 0:
-                # results is a list where each element corresponds to a query vector
-                # Since we only pass one vector, results[0] contains the matches
-                for hit in results[0]:
-                    normalized_results.append({
-                        "id": hit.get("id"),
-                        "score": hit.get("distance"),
-                        "payload": {
-                            "text": hit.get("entity", {}).get("text", ""),
-                            "metadata": hit.get("entity", {}).get("metadata", {})
-                        }
-                    })
+            if not results or len(results) == 0:
+                return []
+
+            # 2. Map Milvus 'hits' to the RettrievedDocument schema
+            # results[0] contains hits for our single query vector
+            return [
+                RettrievedDocument(
+                    text=hit.get("entity", {}).get("text", ""),
+                    score=hit.get("distance", 0.0)
+                )
+                for hit in results[0]
+            ]
             
-            return normalized_results
         except Exception as e:
             self.logger.error(f"Error searching in collection '{collection_name}': {e}")
             return []
