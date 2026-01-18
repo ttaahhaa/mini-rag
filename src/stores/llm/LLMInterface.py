@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-
+from typing import List, Optional
 
 class LLMInterface(ABC):
     """
@@ -123,6 +123,23 @@ class LLMInterface(ABC):
         Usage in RAG:
             - Index time: embed_text(document_chunk, document_type=None) → store in MongoDB
             - Query time: embed_text(user_query, document_type=LLMEnums.QUERY) → search MongoDB
+        """
+        pass
+    
+    @abstractmethod
+    def embed_batch(self, texts: List[str], document_type: Optional[str] = None) -> List[List[float]]:
+        """
+        Convert a list of strings into a list of embedding vectors in a single call.
+        
+        This is the high-performance method for RAG indexing. It minimizes network 
+        latency by batching multiple text chunks into a single API request.
+        
+        Args:
+            texts: A list of text chunks to be vectorized.
+            document_type: Optimization hint (e.g., DOCUMENT for indexing).
+            
+        Returns:
+            A list of float vectors, where each vector corresponds to an input text.
         """
         pass
 
