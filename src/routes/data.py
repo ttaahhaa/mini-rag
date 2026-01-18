@@ -11,6 +11,7 @@ from models.AssetModel import AssetModel
 from controllers.DataAsyncController import DataAsyncController
 from models import AssetTypeEnum
 from models import DataChunkSchema
+from controllers import ProcessAsyncController
 
 
 import aiofiles
@@ -97,7 +98,6 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
     project = await project_model.get_project_or_create_one(project_id=project_id)
     
     # Use the new Async Controller
-    from controllers import ProcessAsyncController
     process_controller = ProcessAsyncController(project_id=project_id)
     
     # 1. Logic to identify which files to process
