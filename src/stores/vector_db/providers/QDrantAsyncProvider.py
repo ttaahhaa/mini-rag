@@ -4,6 +4,8 @@ import asyncio
 from qdrant_client import AsyncQdrantClient, models
 from ..VectorDBInterfaceAsync import VectorDBInterfaceAsync
 from ..VectorDBEnums import DistanceMetricEnums
+from models.db_schemas import RettrievedDocument
+from typing import List
 
 class QDrantAsyncProvider(VectorDBInterfaceAsync):
     """
@@ -46,25 +48,24 @@ class QDrantAsyncProvider(VectorDBInterfaceAsync):
             raise RuntimeError("Client not connected. Call connect() first.")
 
     async def connect(self):
-        """
-        Establishes an asynchronous connection to Qdrant.
-        - If 'url' is provided: Connects to a remote server or Docker cluster.
-        - If 'url' is None: Uses local file-based 'Embedded' mode at 'db_path'.
-        """
+        """Initializes the client with connection pooling settings."""
         if self.url:
-            self.client = AsyncQdrantClient(url=self.url, api_key=self.api_key)
+            # For large scale, we specify limits and timeouts
+            self.client = AsyncQdrantClient(
+                url=self.url, 
+                api_key=self.api_key,
+                timeout=60
+            )
         else:
             self.client = AsyncQdrantClient(path=self.db_path)
-        self.logger.info("Successfully connected to Async Qdrant client.")
+        self.logger.info("Async Qdrant client connected.")
 
     async def disconnect(self):
-        """Gracefully closes the connection by nullifying the client."""
+        """Ensures the underlying HTTP client is closed."""
         if self.client:
-            # AsyncQdrantClient should be closed properly if it has a close method
-            if hasattr(self.client, 'close'):
-                await self.client.close()
-        self.client = None
-        self.logger.info("Disconnected from Qdrant.")
+            await self.client.close()
+            self.client = None
+            self.logger.info("Async Qdrant client closed.")
 
     async def is_collection_exists(self, collection_name: str) -> bool:
         """
@@ -180,88 +181,82 @@ class QDrantAsyncProvider(VectorDBInterfaceAsync):
             return False
 
     async def insert_many(self, collection_name: str, texts: list, vectors: list, 
-                          metadatas: list = None, record_ids: list = None, batch_size: int = 50):
-        """
-        High-throughput batch insertion using parallelized async tasks.
-
-        Optimization:
-            - Uses 'asyncio.gather' to send multiple batches to Qdrant concurrently.
-            - Uses 'zip' for cleaner, more efficient record mapping.
-        """
-        await self._ensure_connected()
-        
-        # Validation: Check if collection exists before attempting insert
-        if not await self.is_collection_exists(collection_name):
-            self.logger.error(f"Cannot insert: Collection '{collection_name}' does not exist.")
-            return False
-        
-        if metadatas is None: 
-            metadatas = [None] * len(texts)
-        if record_ids is None: 
-            record_ids = [None] * len(texts)
-
-        # Validate input lengths match
-        if not (len(texts) == len(vectors) == len(metadatas) == len(record_ids)):
-            self.logger.error("Input lists must have the same length")
-            return False
-
-        tasks = []
-        for i in range(0, len(texts), batch_size):
-            batch_end = i + batch_size
-            b_texts = texts[i:batch_end]
-            b_vectors = vectors[i:batch_end]
-            b_metadata = metadatas[i:batch_end]
-            b_ids = record_ids[i:batch_end]
-
-            # Build the list of records for this specific batch
-            batch_records = [
-                models.Record(
-                    id=r_id or str(uuid.uuid4()),
-                    vector=vec,
-                    payload={"text": txt, "metadata": meta}
-                )
-                for txt, vec, meta, r_id in zip(b_texts, b_vectors, b_metadata, b_ids)
-            ]
+                            metadatas: list = None, record_ids: list = None, batch_size: int = 50):
+            """
+            High-throughput batch insertion using native 'upsert' coroutines.
+            Optimized for large scale by allowing true parallel I/O.
+            """
+            await self._ensure_connected()
             
-            # Queue the upload task for this batch
-            tasks.append(self.client.upload_records(collection_name, batch_records))
+            # 1. Validation
+            if not await self.is_collection_exists(collection_name):
+                self.logger.error(f"Collection '{collection_name}' not found.")
+                return False
+            
+            count = len(texts)
+            metadatas = metadatas or [{}] * count
+            # Ensure we use UUIDs or standard IDs for Qdrant
+            record_ids = record_ids or [str(uuid.uuid4()) for _ in range(count)]
 
-        # CONCURRENCY POWER: Execute all batch upload tasks at the same time
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        successful_batches = 0
-        for idx, res in enumerate(results):
-            if isinstance(res, Exception):
-                self.logger.error(f"Batch processing failed at batch index {idx}: {res}")
-            else:
-                successful_batches += 1
-        
-        total_batches = len(tasks)
-        if successful_batches == 0:
-            self.logger.error(f"All {total_batches} batches failed for collection '{collection_name}'")
-            return False
-        
-        if successful_batches < total_batches:
-            self.logger.warning(f"Only {successful_batches}/{total_batches} batches succeeded for collection '{collection_name}'")
-        
-        return True
+            # 2. Parallel Batching
+            tasks = []
+            for i in range(0, count, batch_size):
+                batch_points = [
+                    models.PointStruct(
+                        id=p_id,
+                        vector=vec,
+                        payload={"text": txt, "metadata": meta or {}}
+                    )
+                    for txt, vec, meta, p_id in zip(
+                        texts[i:i + batch_size], 
+                        vectors[i:i + batch_size], 
+                        metadatas[i:i + batch_size], 
+                        record_ids[i:i + batch_size]
+                    )
+                ]
+                
+                # FIX: Use 'upsert' instead of 'upload_points'.
+                # 'upsert' returns a coroutine that asyncio.gather can manage.
+                tasks.append(
+                    self.client.upsert(
+                        collection_name=collection_name,
+                        points=batch_points,
+                        wait=True 
+                    )
+                )
 
-    async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5):
-        """
-        Performs an asynchronous semantic search.
-        Returns: Top 'limit' most similar points found.
-        """
+            # 3. Concurrent Execution
+            # This will now work because 'tasks' contains valid coroutines
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 4. Error Checking
+            successful_batches = 0
+            for idx, res in enumerate(results):
+                if isinstance(res, Exception):
+                    self.logger.error(f"Batch {idx} failed: {res}")
+                else:
+                    successful_batches += 1
+            
+            return successful_batches == len(tasks)
+    
+    async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5) -> List[RettrievedDocument]:
+        """Optimized search with explicit mapping and error handling."""
         await self._ensure_connected()
         try:
-            if not await self.is_collection_exists(collection_name):
-                self.logger.error(f"Cannot search: Collection '{collection_name}' does not exist.")
-                return []
-            
-            return await self.client.search(
+            response = await self.client.query_points(
                 collection_name=collection_name,
-                query_vector=vector,
+                query=vector,
                 limit=limit
             )
+            
+            # response.points is a list of ScoredPoint
+            return [
+                RettrievedDocument(
+                    text=hit.payload.get("text", ""),
+                    score=hit.score
+                )
+                for hit in response.points
+            ]
         except Exception as e:
-            self.logger.error(f"Search error in collection '{collection_name}': {e}")
+            self.logger.error(f"Search failed: {e}")
             return []

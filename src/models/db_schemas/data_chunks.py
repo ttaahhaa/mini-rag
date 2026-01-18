@@ -49,3 +49,7 @@ class DataChunkSchema(BaseModel):
                 
             }
         ]
+
+class RettrievedDocument(BaseModel):
+    text: str
+    score: float

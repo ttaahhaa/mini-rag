@@ -1,16 +1,17 @@
-from fastapi import FastAPI, APIRouter, Depends, UploadFile, status, Request
+from fastapi import APIRouter, Depends, UploadFile, status, Request
 from fastapi.responses import JSONResponse
 import os
 from helpers.config import get_settings, Settings
-from controllers import DataController, ProjectController, ProcessController
 from .schemas import ProcessRequest
 
 from models import Asset
 from models import ProjectModel, ChunkModel
 from models import ResponseSignal
 from models.AssetModel import AssetModel
+from controllers.DataAsyncController import DataAsyncController
 from models import AssetTypeEnum
 from models import DataChunkSchema
+
 
 import aiofiles
 import logging
@@ -24,21 +25,22 @@ data_router = APIRouter(
 
 @data_router.post("/upload/{project_id}")
 async def upload_data(request: Request, project_id: str, file: UploadFile,
-                app_settings: Settings = Depends(get_settings)):
+                      app_settings: Settings = Depends(get_settings)):
 
     project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
-    data_controller = DataController()
+    data_controller = DataAsyncController()
     is_valid, result_signal = data_controller.validate_uploaded_file(file)
 
     if not is_valid:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content = {"signal": result_signal}
+            content={"signal": result_signal}
         )
 
-    file_path, file_id = data_controller.generate_unique_filepath(
+    # UPDATED: Added await for async path generation
+    file_path, file_id = await data_controller.generate_unique_filepath(
         org_file_name=file.filename,
         project_id=project_id
     )
@@ -51,16 +53,20 @@ async def upload_data(request: Request, project_id: str, file: UploadFile,
         logger.error(f"Error while uploading file: {e}")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content = {"signal": ResponseSignal.FILE_UPLOAD_FAILED.value}
+            content={"signal": ResponseSignal.FILE_UPLOAD_FAILED.value}
         )
 
-    # store the assets in the database
     asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    
+    # Use await for os.path.getsize via asyncio.to_thread for better scale
+    import asyncio
+    file_size = await asyncio.to_thread(os.path.getsize, file_path)
+
     asset_record = Asset(
-        asset_project_id= project.id,
+        asset_project_id=project.id,
         asset_type=AssetTypeEnum.FILE.value,
         asset_name=file_id, 
-        asset_size=os.path.getsize(file_path),
+        asset_size=file_size,
         asset_config={} 
     )
     asset_record = await asset_model.create_asset(asset=asset_record)
@@ -75,18 +81,26 @@ async def upload_data(request: Request, project_id: str, file: UploadFile,
     
 @data_router.post("/process/{project_id}")
 async def process_endpoint(request: Request, project_id: str, process_request: ProcessRequest):
+    """
+    Asynchronously processes files into chunks and stores them in MongoDB.
+    Offloads heavy I/O and CPU tasks to maintain high concurrency.
+    """
     chunk_size = process_request.chunk_size
     overlap_size = process_request.overlap_size
 
+    # Initialize Async Models
     project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
     chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
+    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    
+    # Get or create project
     project = await project_model.get_project_or_create_one(project_id=project_id)
     
-    process_controller = ProcessController(project_id=project_id)
+    # Use the new Async Controller
+    from controllers import ProcessAsyncController
+    process_controller = ProcessAsyncController(project_id=project_id)
     
-    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
-
-    # Logic to identify which files to process
+    # 1. Logic to identify which files to process
     project_file_ids = {}
     if process_request.file_id:
         asset_record = await asset_model.get_asset_record(
@@ -99,15 +113,13 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"signal": ResponseSignal.FILE_NOT_FOUND_IN_PROJECT.value}
-    )
+            )
     else:
-        # Retrieve all assets for the project if no specific file_id is provided
-        
+        # Retrieve all file assets for the project
         project_assets = await asset_model.get_all_project_assets(
             project_id=project.id,
             asset_type=AssetTypeEnum.FILE.value
         )
-        # Using dot notation thanks to Pydantic mapping
         project_file_ids = {asset.id: asset.asset_name for asset in project_assets}
     
     if not project_file_ids:
@@ -116,28 +128,30 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
             content={"signal": ResponseSignal.NO_FILES_IN_PROJECT.value}
         )
     
-    # Optional reset of previous chunks
+    # 2. Optional reset of previous chunks
     if process_request.do_reset == 1:
         await chunk_model.delete_chunks_by_project_id(project_id=project.id)
 
     total_inserted = 0
-    # Process each file identified in the list
-    # Iterate over file IDs and names
+
+    # 3. Process each file asynchronously
     for asset_id, file_name in project_file_ids.items():
-        file_content = process_controller.get_file_content(file_id=file_name)
+        # Await the content loading (now offloaded to a thread internally)
+        file_content = await process_controller.get_file_content(file_id=file_name)
 
         if not file_content:
             logger.warning(f"Skipping file {file_name}: unable to load content.")
             continue
 
-        file_chunks = process_controller.process_file_content(
+        # Await the CPU-heavy text splitting (now offloaded to a thread internally)
+        file_chunks = await process_controller.process_file_content(
             file_content=file_content,
-            file_id=file_name,
             chunk_size=chunk_size,
             chunk_overlap=overlap_size
         )
 
         if file_chunks:
+            # Map LangChain documents to your DataChunkSchema
             file_chunks_records = [
                 DataChunkSchema(
                     chunk_text=chunk.page_content,
@@ -148,7 +162,8 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
                 )
                 for i, chunk in enumerate(file_chunks)
             ]
-            # Bulk insert chunks into MongoDB
+            
+            # Bulk insert chunks into MongoDB (already async)
             total_inserted += await chunk_model.insert_many_chunks(chunks=file_chunks_records)
 
     return JSONResponse(

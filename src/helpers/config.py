@@ -1,20 +1,30 @@
 import os
+from enum import Enum
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 1. Manually find the project root
-# This file is in: /home/taha/mini-rag/src/helpers/config.py
+# --- Enums for Type Safety ---
+
+class LLMEnums(Enum):
+    OPENAI = "openai"
+    COHERE = "cohere"
+    ANTHROPIC = "anthropic"
+
+class VectorDBEnums(Enum):
+    QDRANT = "QDRANT"
+    AsyncQDRANT = "AsyncQDRANT"
+    MILVUS = "MILVUS"
+    AsyncMILVUS = "AsyncMILVUS"
+
+class DocumentTypeEnum(Enum):
+    DOCUMENT = "document"
+    QUERY = "query"
+
+# --- Path Resolution ---
 current_file_path = os.path.abspath(__file__)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
 env_path = os.path.join(project_root, ".env")
 
-print(f"\n--- CONFIG DIAGNOSTIC ---")
-print(f"Looking for .env at: {env_path}")
-if os.path.exists(env_path):
-    print("SUCCESS: .env file found!")
-else:
-    print("ERROR: .env file NOT FOUND at this path.")
-print(f"--------------------------\n")
-
+# --- Settings Class ---
 class Settings(BaseSettings):
     # App Settings
     APP_NAME: str
@@ -30,23 +40,28 @@ class Settings(BaseSettings):
     MONGODB_DATABASE: str
 
     # LLM Configurations
-    GENERATION_BACKEND: str = None
-    EMBEDDING_BACKEND: str = None
-
-    GENERATION_MODEL_ID: str = None
-    EMBEDDING_MODEL_ID: str = None
-    EMBEDDING_MODEL_SIZE: int = None
+    GENERATION_BACKEND: str
+    EMBEDDING_BACKEND: str
+    GENERATION_MODEL_ID: str
+    EMBEDDING_MODEL_ID: str
+    EMBEDDING_MODEL_SIZE: int
 
     DEFAULT_INPUT_MAX_TOKENS: int = 1024
     DEFUALT_OUTPUT_MAX_TOKENS: int = 200
     DEFAULT_GENERATION_TEMPERATURE: float = 0.1
 
-    # OpenAI Configurations
+    # Provider Keys
     OPENAI_API_KEY: str = None
     OPENAI_API_URL: str = None
-
-    # Cohere Configurations
     COHERE_API_KEY: str = None
+
+    # VectorDB Configuration (UPDATED for Scale)
+    VECTOR_DB_BACKEND: str
+    VECTOR_DB_NAME: str
+    VECTOR_DB_DISTANCE_METRIC: str
+    # Add these for remote clusters/Docker
+    VECTOR_DB_URL: str = None
+    VECTOR_DB_API_KEY: str = None
 
     model_config = SettingsConfigDict(
         env_file=env_path,
@@ -54,10 +69,5 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    # VectorDB Configuration
-    VECTOR_DB_BACKEND: str
-    VECTOR_DB_NAME: str  # Database name (used to construct file paths)
-    VECTOR_DB_DISTANCE_METRIC: str = None
-    
 def get_settings():
     return Settings()
