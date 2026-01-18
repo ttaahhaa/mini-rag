@@ -87,8 +87,9 @@ class LLMInterface(ABC):
         """
         pass
 
-    @abstractmethod
-    def embed_text(self, text, document_type = None) -> list[float]:
+    def embed_text(self, text: str, document_type: Optional[str] = None) -> List[float]:
+        """Convert a single string into a vector (used for queries)."""
+        pass
         """
         Convert text into a dense vector embedding for semantic search.
         
@@ -129,17 +130,10 @@ class LLMInterface(ABC):
     @abstractmethod
     def embed_batch(self, texts: List[str], document_type: Optional[str] = None) -> List[List[float]]:
         """
-        Convert a list of strings into a list of embedding vectors in a single call.
+        Convert a list of strings into a list of vectors in a single call.
         
-        This is the high-performance method for RAG indexing. It minimizes network 
-        latency by batching multiple text chunks into a single API request.
-        
-        Args:
-            texts: A list of text chunks to be vectorized.
-            document_type: Optimization hint (e.g., DOCUMENT for indexing).
-            
-        Returns:
-            A list of float vectors, where each vector corresponds to an input text.
+        This is the high-performance method for RAG indexing. 
+        Implementations should include sub-batching and retry logic.
         """
         pass
 

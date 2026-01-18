@@ -3,6 +3,8 @@ from ..LLMEnums import CohereEnums, DocumentTypeEnum, LLMEnums
 from helpers.config import get_settings
 import cohere
 import logging
+import time
+import random
 
 
 class CohereProvider(LLMInterface):
@@ -152,32 +154,64 @@ class CohereProvider(LLMInterface):
             self.logger.error(f"Error during Cohere embedding: {str(e)}")
             return None
 
-    def embed_batch(self, texts: list[str], document_type=None) -> list[list[float]]:
+    def embed_batch(self, texts: list[str], document_type=None, batch_size: int = 96) -> list[list[float]]:
         """
-        Optimized: Generates embeddings for a list of texts in a single API call.
-        """
-        if not self.client or not self.embedding_model_id:
-            self.logger.error("Cohere Client or Model not set")
-            return None
-
-        cohere_input_type = CohereEnums.DOCUMENT.value
-        if document_type == DocumentTypeEnum.QUERY:
-            cohere_input_type = CohereEnums.QUERY.value
+        Converts a list of strings into a list of embedding vectors.
         
-        # Process all texts (truncation/cleaning)
-        processed_texts = [self.process_text(t) for t in texts]
+        This method is optimized for high-volume indexing by:
+        1. Splitting the input into 'sub-batches' to avoid API payload limits.
+        2. Implementing exponential backoff to handle 'Too Many Requests' (429) errors.
+        """
+        
+        # Determine the purpose of the embedding (Indexing vs. Searching).
+        # Cohere V3 models require an input_type to optimize vector performance.
+        cohere_input_type = CohereEnums.DOCUMENT.value # Default: for storing in Vector DB
+        if document_type == DocumentTypeEnum.QUERY:
+            cohere_input_type = CohereEnums.QUERY.value # For real-time search queries
 
-        try:
-            response = self.client.embed(
-                model=self.embedding_model_id,
-                texts=processed_texts,
-                input_type=cohere_input_type,
-                embedding_types=["float"]
-            )
-            return response.embeddings.float # Returns a list of vectors
-        except Exception as e:
-            self.logger.error(f"Batch embedding error: {str(e)}")
-            return None
+        all_embeddings = []
+        
+        # --- SUB-BATCHING LOOP ---
+        # We iterate through the list of texts in steps of 'batch_size'.
+        # This prevents sending requests that are physically too large for the API to process.
+        for i in range(0, len(texts), batch_size):
+            # Extract a slice of the text list (e.g., from index 0 to 95)
+            sub_batch = texts[i : i + batch_size]
+            
+            # Pre-process each text in the sub-batch (truncation, cleaning, etc.)
+            processed_texts = [self.process_text(t) for t in sub_batch]
+            
+            # --- RETRY LOGIC (EXPONENTIAL BACKOFF) ---
+            # If the API returns a rate limit error (429), we wait and try again.
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Execute the API call for the current sub-batch
+                    response = self.client.embed(
+                        model=self.embedding_model_id,
+                        texts=processed_texts,
+                        input_type=cohere_input_type,
+                        embedding_types=["float"]
+                    )
+                    
+                    # If successful, add these vectors to our final list and exit the retry loop
+                    all_embeddings.extend(response.embeddings.float)
+                    break 
+                    
+                except Exception as e:
+                    # Check if the error is specifically a rate limit (HTTP 429)
+                    if "429" in str(e) and attempt < max_retries - 1:
+                        # Wait logic: 2^attempt gives us 1s, 2s, 4s...
+                        # random.random() adds 'jitter' to prevent simultaneous retries from multiple users.
+                        wait_time = (2 ** attempt) + random.random()
+                        self.logger.warning(f"Rate limit hit. Retrying in {wait_time:.2f}s...")
+                        time.sleep(wait_time)
+                    else:
+                        # If the error isn't a 429, or we ran out of retries, we log it and fail.
+                        self.logger.error(f"Batch failed after {max_retries} attempts: {e}")
+                        return None
+                        
+        return all_embeddings
     
     def construct_prompt(self, prompt: str, role: str = "user") -> dict:
         """

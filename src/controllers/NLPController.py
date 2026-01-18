@@ -51,36 +51,37 @@ class NLPController(BaseController):
                             chunks_ids: List[int], 
                             do_reset: bool = False):
         
-            collection_name = self.create_collection_name(project_id=project.project_id)
-            texts = [c.chunk_text for c in chunks]
-            metadata = [i.chunk_metadata for i in chunks]
+        collection_name = self.create_collection_name(project_id=project.project_id)
+        texts = [c.chunk_text for c in chunks]
+        metadata = [i.chunk_metadata for i in chunks]
 
-            # PERFORMANCE BOOST: Use the new batch method instead of a loop
-            vectors = self.embedding_client.embed_batch(
-                texts=texts,
-                document_type=DocumentTypeEnum.DOCUMENT.value
-            )
+        # The controller doesn't care about sub-batching anymore.
+        # It just sends all 50 (or 500) texts to the provider.
+        vectors = self.embedding_client.embed_batch(
+            texts=texts,
+            document_type=DocumentTypeEnum.DOCUMENT.value
+        )
 
-            if not vectors:
-                self.logger.error("Failed to generate batch embeddings")
-                return False
+        if not vectors:
+            self.logger.error("Indexing failed: Could not generate embeddings.")
+            return False
 
-            # Step 3 & 4 remain the same
-            self.vectordb_client.create_collection(
-                collection_name=collection_name,
-                embedding_size=self.embedding_client.embedding_size,
-                do_reset=do_reset
-            )
+        # Initialize collection and insert vectors as usual
+        self.vectordb_client.create_collection(
+            collection_name=collection_name,
+            embedding_size=self.embedding_client.embedding_size,
+            do_reset=do_reset
+        )
 
-            self.vectordb_client.insert_many(
-                collection_name=collection_name,
-                texts=texts,
-                vectors=vectors,
-                metadatas=metadata,
-                record_ids=chunks_ids
-            )
+        self.vectordb_client.insert_many(
+            collection_name=collection_name,
+            texts=texts,
+            vectors=vectors,
+            metadatas=metadata,
+            record_ids=chunks_ids
+        )
 
-            return True
+        return True
 
     def search_vector_db_collection(self, project: ProjectSchema, text: str, limit: int = 10):
         """
