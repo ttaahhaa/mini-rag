@@ -35,7 +35,7 @@ class CohereProvider(LLMInterface):
         
         # Initialize Cohere client with API key
         self.client = cohere.Client(self.api_key)
-        
+        self.enums = CohereEnums
         # Logger for tracking operations and debugging
         self.logger = logging.getLogger(__name__)
 
@@ -75,44 +75,42 @@ class CohereProvider(LLMInterface):
         """
         return text[:self.default_input_max_tokens].strip()
 
-    def generate_text(self, prompt: str, chat_history: list=[], max_output_tokens: int = None,
-                      temperature: float = None) -> str:
+    def generate_text(self, prompt: str, chat_history: list = [], max_output_tokens: int = None,
+                  temperature: float = None) -> str:
         """
         Generate text using Cohere's chat endpoint.
-        
-        Args:
-            prompt: User message/question to generate response for
-            chat_history: List of previous messages for context (Cohere chat format)
-            max_output_tokens: Override default max output tokens
-            temperature: Override default temperature for this generation
-            
-        Returns:
-            Generated text response or None if error occurs
+        Fixed to ensure 'message' is a string to avoid 422 errors.
         """
-        # Validate client is initialized
-        if not self.client:
-            self.logger.error(f"Cohere Client was not set") 
+        if not self.client or not self.generation_model_id:
+            self.logger.error("Cohere Client or Model ID not configured.")
             return None
         
-        # Validate generation model is configured
-        if not self.generation_model_id:
-            self.logger.error(f"Generation model for Cohere was not set")
+        # 1. Cohere's 'message' parameter MUST be a string.
+        # We extract just the text, not the dictionary from construct_prompt.
+        message_text = prompt
+        if isinstance(prompt, dict):
+            message_text = prompt.get("content", prompt.get("message", str(prompt)))
+        else:
+            # Just in case, process the raw string for truncation/cleaning
+            message_text = self.process_text(prompt)
+
+        try:
+            response = self.client.chat(
+                model=self.generation_model_id,
+                chat_history=chat_history, 
+                message=message_text, # This is a string
+                max_tokens=max_output_tokens if max_output_tokens else self.default_output_max_tokens,
+                temperature=temperature if temperature else self.default_generation_temperature
+            )
+            
+            if not response or not response.text:
+                return None
+                
+            return response.text
+
+        except Exception as e:
+            self.logger.error(f"Cohere API Error: {e}")
             return None
-        
-        # Call Cohere's chat API with configuration
-        response = self.client.chat(
-            model=self.generation_model_id,                     # Model to use for generation
-            chat_history=chat_history,                          # Previous conversation context
-            message=self.construct_prompt(prompt),              # Current user message (formatted as dict)
-            max_tokens=max_output_tokens if max_output_tokens else self.default_output_max_tokens,
-            temperature=temperature if temperature else self.default_generation_temperature          # Randomness control
-        )
-        
-        # Validate response and extract generated text
-        if not response or not response.text:
-            self.logger.error(f"Failed to get response from Cohere for prompt")
-            return None
-        return response.text
 
     def embed_text(self, text, document_type=None) -> list[float]:
         """
@@ -213,18 +211,15 @@ class CohereProvider(LLMInterface):
                         
         return all_embeddings
     
-    def construct_prompt(self, prompt: str, role: str = "user") -> dict:
+    def construct_prompt(self, prompt: str, role: str = "USER") -> dict:
         """
-        Format prompt as Cohere-compatible message dictionary.
+        Format prompt for Cohere-compatible chat history.
+        Cohere requires 'message' instead of 'content'.
+        """
+        # Standardize roles for Cohere: USER or CHATBOT
+        cohere_role = "USER" if role.lower() == "user" else "CHATBOT"
         
-        Args:
-            prompt: Raw prompt text
-            role: Message role ("user" for user messages, "system" for system prompts)
-            
-        Returns:
-            Dictionary with role and processed content
-        """
         return {
-            "role": role,                            # Who is speaking (user/system)
-            "content": self.process_text(prompt)     # Message content (truncated and cleaned)
+            "role": cohere_role,
+            "message": self.process_text(prompt)
         }

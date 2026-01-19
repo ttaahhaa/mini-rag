@@ -5,7 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from helpers.config import get_settings
 from stores.llm.LLMProvidorFactory import LLMProviderFactory
 from stores.vector_db.VectorDBProviderFactory import VectorDBProviderFactory
-
+from stores.templates import TemplateParser
+from models.enums.TemplatesEnum import TemplateLanguagesEnums
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup Logic ---
@@ -40,6 +41,9 @@ async def lifespan(app: FastAPI):
         )    
     await app.vectordb_client.connect()
     print(f"SUCCESS: VectorDB ({settings.VECTOR_DB_BACKEND}) connection established.")
+
+    app.template_parser = TemplateParser(default_language=settings.DEFAULT_LANG,
+                                         language=settings.PRIMARY_LANG)
 
     yield  # Application runs here
 
