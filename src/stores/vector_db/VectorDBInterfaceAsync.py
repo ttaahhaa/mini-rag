@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-
+from models.db_schemas import RettrievedDocument
+from typing import List
 class VectorDBInterfaceAsync(ABC):
     """
     Abstract interface for asynchronous vector database operations.
@@ -120,7 +121,8 @@ class VectorDBInterfaceAsync(ABC):
         pass
 
     @abstractmethod
-    async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5):
+    async def search_by_vector(self, collection_name: str,
+                                vector: list, limit: int = 5) -> List[RettrievedDocument]:
         """
         Search for similar vectors in a collection.
         

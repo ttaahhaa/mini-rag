@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from models.enums.TemplatesEnum import TemplateLanguagesEnums
 # --- Enums for Type Safety ---
 
 class LLMEnums(Enum):
@@ -68,6 +68,10 @@ class Settings(BaseSettings):
         env_file_encoding='utf-8',
         extra="ignore"
     )
+
+    # Locales
+    DEFAULT_LANG: str = TemplateLanguagesEnums.En.value
+    PRIMARY_LANG: str = TemplateLanguagesEnums.En.value
 
 def get_settings():
     return Settings()

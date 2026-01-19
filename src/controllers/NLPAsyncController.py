@@ -5,9 +5,11 @@ from stores.llm.LLMEnums import DocumentTypeEnum
 from typing import List
 import json 
 import asyncio
+from stores.templates import TemplateParser
+from models.enums.TemplatesEnum import TemplateDirectoriesAndFilesEnums, PromptsVariables
 
 class NLPAsyncController(BaseAsyncController):
-    def __init__(self, generation_client, embedding_client, vectordb_client):
+    def __init__(self, generation_client, embedding_client, vectordb_client, template_parser: TemplateParser):
         """
         Initializes the Async NLP Controller.
         """
@@ -15,6 +17,7 @@ class NLPAsyncController(BaseAsyncController):
         self.generation_client = generation_client
         self.embedding_client = embedding_client
         self.vectordb_client = vectordb_client
+        self.template_parser = template_parser
 
     def create_collection_name(self, project_id: str):
         return f"Collection_{project_id}".strip()
@@ -75,6 +78,7 @@ class NLPAsyncController(BaseAsyncController):
         """
         Asynchronous semantic search.
         """
+        
         collection_name = self.create_collection_name(project_id=project.project_id)
 
         # 1. Offload single-text embedding to a worker thread
@@ -96,3 +100,67 @@ class NLPAsyncController(BaseAsyncController):
         )
 
         return results if results else []
+    
+    async def asnwer_rag_question(self, project: ProjectSchema, query: str, limit: int = 10):
+        answer, full_prompt, chat_history = None, None, None
+        
+        # Step 1: Retrieve related documents (FIX: Added await)
+        retrieved_documents = await self.search_vector_db_collection(
+            project=project,
+            text=query,
+            limit=limit
+        )
+        
+        if not retrieved_documents:
+            return answer, full_prompt, chat_history
+
+        # Step 2: Construct Prompt LLM (FIX: Added awaits for async template parser)
+        system_prompt = await self.template_parser.get(
+            TemplateDirectoriesAndFilesEnums.RAG.value,
+            PromptsVariables.SYSTEM_PROMPT.value # Ensure this key exists in your enums
+        )
+        
+        # Process document templates asynchronously for maximum speed
+        doc_template_tasks = [
+            self.template_parser.get(
+                TemplateDirectoriesAndFilesEnums.RAG.value,
+                PromptsVariables.DOCUMENT_PROMPT.value, 
+                {"doc_num": idx + 1, "chunk_text": doc.text}
+            )
+            for idx, doc in enumerate(retrieved_documents)
+        ]
+        
+        # Execute all string substitutions in parallel
+        doc_prompts_list = await asyncio.gather(*doc_template_tasks)
+
+        # Clean up the list to remove any None values returned by the parser
+        filtered_prompts = [p for p in doc_prompts_list if p is not None]
+
+        if not filtered_prompts:
+            documents_prompts = "No relevant context found."
+        else:
+            documents_prompts = "\n".join(filtered_prompts)
+
+        footer_prompt = await self.template_parser.get(
+            TemplateDirectoriesAndFilesEnums.RAG.value,
+            PromptsVariables.FOOTER_PROMPT.value,{"query": query}
+        )
+        
+        # Construct chat history using provider-specific roles
+        chat_history = [
+            self.generation_client.construct_prompt(
+                prompt=system_prompt,
+                role=self.generation_client.enums.SYSTEM.value
+            )
+        ]
+
+        full_prompt = "\n\n".join([documents_prompts, footer_prompt])
+
+        # Step 3: Generate Answer (Offload blocking sync LLM call to a thread)
+        answer = await asyncio.to_thread(
+            self.generation_client.generate_text,
+            prompt=full_prompt,
+            chat_history=chat_history
+        )
+
+        return answer, full_prompt, chat_history

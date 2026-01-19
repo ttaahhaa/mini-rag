@@ -41,7 +41,7 @@ class OpenAIProvider(LLMInterface):
         
         # Initialize OpenAI client with API key and optional custom base URL
         self.client = OpenAI(api_key=self.api_key, base_url=self.api_url)
-        
+        self.enums = OpenAIEnums
         # Logger for tracking operations and debugging
         self.logger = logging.getLogger(__name__)
 

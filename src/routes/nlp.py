@@ -33,7 +33,9 @@ async def index_project(request: Request, project_id: str, push_request: PushReq
     nlp_controller = NLPAsyncController(
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
-        vectordb_client=request.app.vectordb_client
+        vectordb_client=request.app.vectordb_client,
+        template_parser=request.app.template_parser
+        
     )
 
     has_records = True
@@ -86,6 +88,8 @@ async def get_project_index_info(request: Request, project_id: str):
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
+        template_parser=request.app.template_parser
+        
     )
 
     collection_info = await nlp_controller.get_vector_collection_info(project=project)
@@ -106,6 +110,7 @@ async def search_index(request: Request, project_id: str, search_request: Search
         vectordb_client=request.app.vectordb_client,
         generation_client=request.app.generation_client,
         embedding_client=request.app.embedding_client,
+        template_parser=request.app.template_parser
     )
 
     # Corrected the results logic to prevent crash if results is False
@@ -125,5 +130,39 @@ async def search_index(request: Request, project_id: str, search_request: Search
         content={
             "signal": ResponseSignal.VECTORDB_SEARCH_SUCCESS.value,
             "results": [result.dict() for result in results]
+        }
+    )
+
+@nlp_router.post("/index/answer/{project_id}")
+async def inswer_index(request: Request, project_id: str, search_request: SearchRequest):
+    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    project = await project_model.get_project_or_create_one(project_id=project_id)
+
+    nlp_controller = NLPAsyncController(
+        vectordb_client=request.app.vectordb_client,
+        generation_client=request.app.generation_client,
+        embedding_client=request.app.embedding_client,
+        template_parser=request.app.template_parser
+    )
+
+    # FIX: Added 'await' here to resolve the TypeError
+    answer, full_prompt, chat_history = await nlp_controller.asnwer_rag_question(
+        project=project,
+        query=search_request.text,
+        limit=search_request.limit
+    )
+
+    if not answer:
+        return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"signal": ResponseSignal.RAG_ANSWER_FAILED.value}
+            ) 
+            
+    return JSONResponse(
+        content={
+            "signal": ResponseSignal.RAG_ANSWER_SUCESS.value,
+            "answer": answer,
+            "full_prompt": full_prompt,
+            "chat_history": chat_history
         }
     )

@@ -5,6 +5,7 @@ from pymilvus import MilvusClient
 from ..VectorDBInterfaceAsync import VectorDBInterfaceAsync
 from ..VectorDBEnums import DistanceMetricEnums
 from models.db_schemas import RettrievedDocument
+from typing import List
 
 class MilvusAsyncProvider(VectorDBInterfaceAsync):
     """
@@ -312,7 +313,8 @@ class MilvusAsyncProvider(VectorDBInterfaceAsync):
         
         return True
     
-    async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5):
+    async def search_by_vector(self, collection_name: str,
+                                vector: list, limit: int = 5) -> List[RettrievedDocument]:
         """
         Asynchronously searches for similar vectors in a Milvus collection.
 
