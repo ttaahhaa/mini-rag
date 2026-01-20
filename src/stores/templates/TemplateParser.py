@@ -8,15 +8,31 @@ from models.enums.TemplatesEnum import TemplateDirectoriesAndFilesEnums
 
 
 class TemplateParser:
+    """
+    A utility class to parse and manage string templates stored in Python modules.
+    Supports multi-language locales with a fallback mechanism to a default language.
+    """
     def __init__(self, default_language: str, language: str):
+        """
+        Initializes the TemplateParser.
+
+        Args:
+            default_language (str): The fallback language code (e.g., 'en').
+            language (str): The preferred language code.
+        """
         self.logger = logging.getLogger(__name__)
         self.current_path = os.path.dirname(os.path.abspath(__file__))
         self.default_language = default_language
         self.language = None
+        # Cache to store imported modules to avoid redundant I/O and import overhead
         self._module_cache = {}
         self._sync_set_language(language=language)
 
     def _sync_set_language(self, language: str):
+        """
+        Synchronously validates and sets the preferred language.
+        Falls back to default_language if the specified language locale directory doesn't exist.
+        """
         if not language:
             self.language = self.default_language
             return
@@ -65,8 +81,10 @@ class TemplateParser:
 
         key_attribute = getattr(module, key)
 
+        # Handle string.Template objects for dynamic substitution
         if isinstance(key_attribute, Template):
             return key_attribute.substitute(vars)
+        # Handle plain strings
         elif isinstance(key_attribute, str):
             return key_attribute
         else:
@@ -75,6 +93,10 @@ class TemplateParser:
             )
 
     def _resolve_targeted_language(self, group: str) -> Optional[str]:
+        """
+        Determines which language locale contains the requested template group.
+        Checks preferred language first, then falls back to default.
+        """
         group_filename = f"{group}.py"
 
         path = os.path.join(
@@ -98,10 +120,16 @@ class TemplateParser:
         return None
 
     def _import_template_module(self, language: str, group: str) -> Any:
+        """
+        Dynamically imports the template module using importlib.
+        Uses a local cache to improve performance on subsequent requests.
+        """
         try:
+            # Check if the module is already in the cache
             if (language, group) in self._module_cache:
                 return self._module_cache[(language, group)]
 
+            # Construct the full module path for importlib
             module_path = (
                 f"{TemplateDirectoriesAndFilesEnums.STORES.value}."
                 f"{TemplateDirectoriesAndFilesEnums.TEMPLATES.value}."
@@ -111,6 +139,7 @@ class TemplateParser:
             )
 
             module = importlib.import_module(module_path)
+            # Store in cache for future use
             self._module_cache[(language, group)] = module
             return module
         except ImportError as e:
