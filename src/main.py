@@ -7,6 +7,7 @@ from stores.llm.LLMProvidorFactory import LLMProviderFactory
 from stores.vector_db.VectorDBProviderFactory import VectorDBProviderFactory
 from stores.templates import TemplateParser
 from models.enums.TemplatesEnum import TemplateLanguagesEnums
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup Logic ---
