@@ -1,0 +1,91 @@
+# 🗄️ Database Migrations (Alembic)
+
+This project uses **Alembic** to manage PostgreSQL schema changes.
+Follow the steps below to set up your database environment and sync your
+models.
+
+## 1. Prerequisites
+
+Ensure you have the necessary database drivers installed in your Conda
+environment. While the application uses `asyncpg` for operations,
+Alembic migrations are handled synchronously via `psycopg2`.
+
+``` bash
+# Required for running migrations
+pip install psycopg2-binary
+
+# Required for FastAPI application logic
+pip install asyncpg
+```
+
+## 2. Configuration
+
+Initial setup requires creating your local configuration file:
+
+Copy the template:
+
+``` bash
+cp alembic.ini.example alembic.ini
+```
+
+Configure the Database URL: Open `alembic.ini` and update the
+`sqlalchemy.url` with your local credentials. Ensure the URL is not
+wrapped in quotes.
+
+``` ini
+# Format: postgresql+psycopg2://user:password@localhost:5432/db_name
+sqlalchemy.url = postgresql+psycopg2://user:pass$@host:port/database_name
+```
+
+## 3. Migration Workflow
+
+Whenever you modify the SQLAlchemy models (e.g., in
+`src/models/db_schemas/minirag/schemas/`), follow these steps:
+
+### Step A: Generate a Revision
+
+This command compares your Python models against the current database
+state and generates a migration script in `alembic/versions/`.
+
+``` bash
+alembic revision --autogenerate -m "Add description of changes"
+```
+
+### Step B: Apply the Migration
+
+Run this to execute the generated script and update your actual
+PostgreSQL tables.
+
+``` bash
+alembic upgrade head
+```
+
+## 4. Useful Commands
+
+  -----------------------------------------------------------------------
+  Command                             Action
+  ----------------------------------- -----------------------------------
+  alembic current                     Check which migration version the
+                                      database is currently on.
+
+  alembic history --verbose           View a detailed list of all
+                                      migration scripts.
+
+  alembic downgrade -1                Revert the last applied migration.
+
+  alembic upgrade +1                  Move forward by exactly one
+                                      migration version.
+  -----------------------------------------------------------------------
+
+## 5. Troubleshooting Common Issues
+
+-   **ModuleNotFoundError: No module named 'psycopg2'**: Run
+    `pip install psycopg2-binary`.
+-   **ArgumentError: Could not parse SQLAlchemy URL**: Remove any double
+    or single quotes around the URL in `alembic.ini`.
+-   **NameError: name 'Index' is not defined**: Ensure `Index` is
+    imported from `sqlalchemy` in your schema files.
+-   **Table already exists**: This happens if you try to run
+    `upgrade head` on a database that was created manually. Use
+    `alembic stamp head` to tell Alembic the database is already up to
+    date.

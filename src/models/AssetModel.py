@@ -1,72 +1,60 @@
 from .BaseDataModel import BaseDataModel
-from .db_schemas.asset import Asset
+from models.db_schemas import Asset  # Ensure this is the SQLAlchemy model
 from .enums.DataBaseEnums import DatabaseEnum
-from bson.objectid import ObjectId
+from sqlalchemy.future import select
 
 class AssetModel(BaseDataModel):
+
     def __init__(self, db_client: object):
-        super().__init__(db_client)
-        self.collection = self.db_client[DatabaseEnum.COLLECTION_ASSET_NAME.value]
+        """
+        In this pattern, db_client is the session factory (async_sessionmaker).
+        """
+        super().__init__(db_client=db_client)
+        self.db_client = db_client
 
     @classmethod
     async def create_instance(cls, db_client: object):
         """
-        Factory method to create an instance of AssetModel and initialize the collection.
+        Factory method to create an instance of AssetModel.
+        Collection initialization is no longer needed for SQL.
         """
         instance = cls(db_client)
-        await instance.init_collection()
         return instance
 
-    async def init_collection(self):
-        """
-        Ensures the collection and indexes exist.
-        """
-        all_collections = await self.db_client.list_collection_names()
-        if DatabaseEnum.COLLECTION_ASSET_NAME.value not in all_collections:
-            self.collection = self.db_client[DatabaseEnum.COLLECTION_ASSET_NAME.value]
-            indexes = Asset.get_indexes()
-            for index in indexes:
-                await self.collection.create_index(
-                    index["key"],
-                    name=index["name"],
-                    unique=index["unique"],
-                )
-    
     async def create_asset(self, asset: Asset):
-        """
-        Saves a new asset record to MongoDB.
-        """
-        asset_dict = asset.model_dump(by_alias=True, exclude_unset=True)
-        asset_dict.pop("_id", None)
-        result = await self.collection.insert_one(asset_dict)
-        asset.id = result.inserted_id 
+        async with self.db_client() as session:
+            async with session.begin():
+                session.add(asset)
+                await session.flush()
+            # Transaction is auto-committed here
+            await session.refresh(asset)
         return asset
-    
-    async def get_all_project_assets(self, project_id: str, asset_type: str) -> list[Asset]:
+
+    async def get_all_project_assets(self, asset_project_id: str, asset_type: str):
         """
-        Retrieves all assets for a project and maps them to Pydantic objects.
+        Retrieves all assets for a project based on project_id and asset_type.
         """
-        query = {
-            "asset_project_id": ObjectId(project_id) if isinstance(project_id, str) else project_id,
-            "asset_type": asset_type
-        }
-        
-        cursor = self.collection.find(query)
-        assets_dicts = await cursor.to_list(length=None) 
-        
-        # Mapping to Pydantic Asset objects for dot notation access
-        return [Asset(**asset_dict) for asset_dict in assets_dicts]
-    
-    async def get_asset_record(self, asset_project_id: str, asset_name: str) -> Asset | None:
+        async with self.db_client() as session:
+            # We use select() and where() with multiple conditions separated by commas
+            stmt = select(Asset).where(
+                Asset.asset_project_id == asset_project_id,
+                Asset.asset_type == asset_type
+            )
+            result = await session.execute(stmt)
+            # .scalars().all() converts the result rows into a list of Asset objects
+            records = result.scalars().all()
+        return records
+
+    async def get_asset_record(self, asset_project_id: str, asset_name: str):
         """
         Retrieves a single asset record by project ID and asset name.
         """
-        query = {
-            "asset_project_id": ObjectId(asset_project_id) if isinstance(asset_project_id, str) else asset_project_id,
-            "asset_name": asset_name
-        }
-        
-        asset_dict = await self.collection.find_one(query)
-        if asset_dict:
-            return Asset(**asset_dict)
-        return None
+        async with self.db_client() as session:
+            stmt = select(Asset).where(
+                Asset.asset_project_id == asset_project_id,
+                Asset.asset_name == asset_name
+            )
+            result = await session.execute(stmt)
+            # scalar_one_or_none() is used when you expect 1 or 0 results
+            record = result.scalar_one_or_none()
+        return record
