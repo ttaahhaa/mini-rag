@@ -7,7 +7,7 @@ from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class ProcessAsyncController(BaseAsyncController):
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: int):
         super().__init__()
         self.project_id = project_id
         # We store the task to get the path, but we'll await it inside methods

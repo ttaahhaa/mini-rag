@@ -4,7 +4,7 @@ import os
 from pymilvus import MilvusClient
 from ..VectorDBInterfaceAsync import VectorDBInterfaceAsync
 from ..VectorDBEnums import DistanceMetricEnums
-from models.db_schemas import RettrievedDocument
+from models.db_schemas import RetrievedDocument
 from typing import List
 
 class MilvusAsyncProvider(VectorDBInterfaceAsync):
@@ -314,13 +314,13 @@ class MilvusAsyncProvider(VectorDBInterfaceAsync):
         return True
     
     async def search_by_vector(self, collection_name: str,
-                                vector: list, limit: int = 5) -> List[RettrievedDocument]:
+                                vector: list, limit: int = 5) -> List[RetrievedDocument]:
         """
         Asynchronously searches for similar vectors in a Milvus collection.
 
         This method wraps the synchronous Milvus search call in a thread to maintain 
         async compatibility. It retrieves the associated text and maps the output 
-        to the project's standardized 'RettrievedDocument' schema.
+        to the project's standardized 'RetrievedDocument' schema.
 
         Args:
             collection_name (str): The name of the collection to search in.
@@ -328,7 +328,7 @@ class MilvusAsyncProvider(VectorDBInterfaceAsync):
             limit (int, optional): Maximum number of results to return. Defaults to 5.
 
         Returns:
-            list[RettrievedDocument]: A list of retrieved documents with their text 
+            list[RetrievedDocument]: A list of retrieved documents with their text 
                 and similarity/distance scores. Returns an empty list [] if no 
                 results are found or if an error occurs.
         """
@@ -351,10 +351,10 @@ class MilvusAsyncProvider(VectorDBInterfaceAsync):
             if not results or len(results) == 0:
                 return []
 
-            # 2. Map Milvus 'hits' to the RettrievedDocument schema
+            # 2. Map Milvus 'hits' to the RetrievedDocument schema
             # results[0] contains hits for our single query vector
             return [
-                RettrievedDocument(
+                RetrievedDocument(
                     text=hit.get("entity", {}).get("text", ""),
                     score=hit.get("distance", 0.0)
                 )

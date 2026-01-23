@@ -221,5 +221,5 @@ class CohereProvider(LLMInterface):
         
         return {
             "role": cohere_role,
-            "message": self.process_text(prompt)
+            "message": prompt
         }

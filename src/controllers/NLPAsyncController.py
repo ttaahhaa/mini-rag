@@ -1,6 +1,6 @@
 from .BaseAsyncController import BaseAsyncController
 from models import ResponseSignal
-from models.db_schemas import ProjectSchema, DataChunkSchema
+from models.db_schemas import Project, DataChunk
 from stores.llm.LLMEnums import DocumentTypeEnum
 from typing import List
 import json 
@@ -19,14 +19,14 @@ class NLPAsyncController(BaseAsyncController):
         self.vectordb_client = vectordb_client
         self.template_parser = template_parser
 
-    def create_collection_name(self, project_id: str):
+    def create_collection_name(self, project_id: int):
         return f"Collection_{project_id}".strip()
     
-    async def reset_vector_db_collection(self, project: ProjectSchema):
+    async def reset_vector_db_collection(self, project: Project):
         collection_name = self.create_collection_name(project_id=project.project_id)
         return await self.vectordb_client.delete_collection(collection_name=collection_name)
     
-    async def get_vector_collection_info(self, project: ProjectSchema):
+    async def get_vector_collection_info(self, project: Project):
         collection_name = self.create_collection_name(project_id=project.project_id)
         collection_info = await self.vectordb_client.get_collection_info(collection_name=collection_name)
         
@@ -34,8 +34,8 @@ class NLPAsyncController(BaseAsyncController):
             json.dumps(collection_info, default=lambda x: x.__dict__)
         )
     
-    async def index_into_vector_db(self, project: ProjectSchema, 
-                                   chunks: List[DataChunkSchema], 
+    async def index_into_vector_db(self, project: Project, 
+                                   chunks: List[DataChunk], 
                                    chunks_ids: List[int], 
                                    do_reset: bool = False):
         """
@@ -74,7 +74,7 @@ class NLPAsyncController(BaseAsyncController):
 
         return result
 
-    async def search_vector_db_collection(self, project: ProjectSchema, text: str, limit: int = 10):
+    async def search_vector_db_collection(self, project: Project, text: str, limit: int = 10):
         """
         Asynchronous semantic search.
         """
@@ -101,7 +101,7 @@ class NLPAsyncController(BaseAsyncController):
 
         return results if results else []
     
-    async def asnwer_rag_question(self, project: ProjectSchema, query: str, limit: int = 10):
+    async def asnwer_rag_question(self, project: Project, query: str, limit: int = 10):
         answer, full_prompt, chat_history = None, None, None
         
         # Step 1: Retrieve related documents (FIX: Added await)
@@ -125,7 +125,7 @@ class NLPAsyncController(BaseAsyncController):
             self.template_parser.get(
                 TemplateDirectoriesAndFilesEnums.RAG.value,
                 PromptsVariables.DOCUMENT_PROMPT.value, 
-                {"doc_num": idx + 1, "chunk_text": doc.text}
+                {"doc_num": idx + 1, "chunk_text": self.generation_client.process_text(doc.text)}
             )
             for idx, doc in enumerate(retrieved_documents)
         ]

@@ -21,7 +21,7 @@ class DataAsyncController(BaseAsyncController):
         
         return True, ResponseSignal.FILE_VALIDATED_SUCESS.value
         
-    async def generate_unique_filepath(self, org_file_name: str, project_id: str):
+    async def generate_unique_filepath(self, org_file_name: str, project_id: int):
         """Async: Checks file existence on disk."""
         project_path = await ProjectAsyncController().get_project_path(project_id=project_id)
         cleaned_filename = self.get_clean_file_name(org_file_name)

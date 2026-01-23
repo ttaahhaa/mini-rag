@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     MONGODB_URL: str
     MONGODB_DATABASE: str
 
+    # POSTGRES Configurations
+    POSTGRES_USERNAME: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_HOST: str
+    POSTGRES_PORT: int
+    POSTGRES_MAIN_DATABASE: str
+
     # LLM Configurations
     GENERATION_BACKEND: str
     EMBEDDING_BACKEND: str

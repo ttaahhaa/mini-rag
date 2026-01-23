@@ -4,13 +4,12 @@ import os
 from helpers.config import get_settings, Settings
 from .schemas import ProcessRequest
 
-from models import Asset
 from models import ProjectModel, ChunkModel
 from models import ResponseSignal
 from models.AssetModel import AssetModel
 from controllers.DataAsyncController import DataAsyncController
 from models import AssetTypeEnum
-from models import DataChunkSchema
+from models.db_schemas import DataChunk, Asset
 from controllers import ProcessAsyncController
 
 
@@ -25,7 +24,7 @@ data_router = APIRouter(
 )
 
 @data_router.post("/upload/{project_id}")
-async def upload_data(request: Request, project_id: str, file: UploadFile,
+async def upload_data(request: Request, project_id: int, file: UploadFile,
                       app_settings: Settings = Depends(get_settings)):
 
     project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
@@ -64,7 +63,7 @@ async def upload_data(request: Request, project_id: str, file: UploadFile,
     file_size = await asyncio.to_thread(os.path.getsize, file_path)
 
     asset_record = Asset(
-        asset_project_id=project.id,
+        asset_project_id=project.project_id,
         asset_type=AssetTypeEnum.FILE.value,
         asset_name=file_id, 
         asset_size=file_size,
@@ -76,12 +75,12 @@ async def upload_data(request: Request, project_id: str, file: UploadFile,
         status_code=status.HTTP_200_OK,
         content={
             "signal": ResponseSignal.FILE_UPLOAD_SUCESS.value,
-            "file_id": str(asset_record.id), 
+            "file_id": str(asset_record.asset_id), 
         },
     )
     
 @data_router.post("/process/{project_id}")
-async def process_endpoint(request: Request, project_id: str, process_request: ProcessRequest):
+async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest):
     """
     Asynchronously processes files into chunks and stores them in MongoDB.
     Offloads heavy I/O and CPU tasks to maintain high concurrency.
@@ -104,11 +103,11 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
     project_file_ids = {}
     if process_request.file_id:
         asset_record = await asset_model.get_asset_record(
-            asset_project_id=project.id,
+            asset_project_id=project.project_id,
             asset_name=process_request.file_id
         )
         if asset_record:
-            project_file_ids = {asset_record.id: asset_record.asset_name}
+            project_file_ids = {asset_record.asset_id: asset_record.asset_name}
         else:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -117,10 +116,10 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
     else:
         # Retrieve all file assets for the project
         project_assets = await asset_model.get_all_project_assets(
-            project_id=project.id,
+            asset_project_id=project.project_id, 
             asset_type=AssetTypeEnum.FILE.value
         )
-        project_file_ids = {asset.id: asset.asset_name for asset in project_assets}
+        project_file_ids = {asset.asset_id: asset.asset_name for asset in project_assets}
     
     if not project_file_ids:
         return JSONResponse(
@@ -130,7 +129,7 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
     
     # 2. Optional reset of previous chunks
     if process_request.do_reset == 1:
-        await chunk_model.delete_chunks_by_project_id(project_id=project.id)
+        await chunk_model.delete_chunks_by_project_id(project_id=project.project_id)
 
     total_inserted = 0
 
@@ -151,13 +150,13 @@ async def process_endpoint(request: Request, project_id: str, process_request: P
         )
 
         if file_chunks:
-            # Map LangChain documents to your DataChunkSchema
+            # Map LangChain documents to your DataChunk
             file_chunks_records = [
-                DataChunkSchema(
+                DataChunk(
                     chunk_text=chunk.page_content,
                     chunk_metadata=chunk.metadata,
                     chunk_order=i + 1,
-                    chunk_project_id=project.id,
+                    chunk_project_id=project.project_id,
                     chunk_asset_id=asset_id
                 )
                 for i, chunk in enumerate(file_chunks)

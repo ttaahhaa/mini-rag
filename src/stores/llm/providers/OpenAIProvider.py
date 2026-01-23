@@ -202,5 +202,5 @@ class OpenAIProvider(LLMInterface):
         """
         return {
             "role": role,                            # Message role (user/system/assistant)
-            "content": self.process_text(prompt)     # Message content (truncated and cleaned)
+            "content": prompt     # Message content (truncated and cleaned)
         }

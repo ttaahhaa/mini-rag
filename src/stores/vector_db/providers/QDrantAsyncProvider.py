@@ -4,7 +4,7 @@ import asyncio
 from qdrant_client import AsyncQdrantClient, models
 from ..VectorDBInterfaceAsync import VectorDBInterfaceAsync
 from ..VectorDBEnums import DistanceMetricEnums
-from models.db_schemas import RettrievedDocument
+from models.db_schemas import RetrievedDocument
 from typing import List
 
 class QDrantAsyncProvider(VectorDBInterfaceAsync):
@@ -239,7 +239,7 @@ class QDrantAsyncProvider(VectorDBInterfaceAsync):
             
             return successful_batches == len(tasks)
     
-    async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5) -> List[RettrievedDocument]:
+    async def search_by_vector(self, collection_name: str, vector: list, limit: int = 5) -> List[RetrievedDocument]:
         """Optimized search with explicit mapping and error handling."""
         await self._ensure_connected()
         try:
@@ -251,7 +251,7 @@ class QDrantAsyncProvider(VectorDBInterfaceAsync):
             
             # response.points is a list of ScoredPoint
             return [
-                RettrievedDocument(
+                RetrievedDocument(
                     text=hit.payload.get("text", ""),
                     score=hit.score
                 )
