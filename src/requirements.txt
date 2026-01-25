@@ -16,4 +16,4 @@ qdrant-client==1.16.2
 pymilvus==2.6.6
 alembic==1.18.1
 asyncpg==0.31.0
-psycopg2==2.9.11
+psycopg2-binary==2.9.11

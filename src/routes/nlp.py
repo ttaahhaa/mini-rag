@@ -8,6 +8,8 @@ from routes.schemas.nlp import PushRequest, SearchRequest
 from models.ProjectModel import ProjectModel
 from models import ChunkModel, ResponseSignal
 from controllers.NLPAsyncController import NLPAsyncController # Explicit import
+from helpers.db import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger('uvicorn.error')
 
@@ -17,10 +19,10 @@ nlp_router = APIRouter(
 )
 
 @nlp_router.post("/index/push/{project_id}")
-async def index_project(request: Request, project_id: int, push_request: PushRequest):
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+async def index_project(request: Request, project_id: int, push_request: PushRequest, db_session: AsyncSession = Depends(get_db)):
+    project_model = await ProjectModel.create_instance(db_session=db_session)
     # ChunkModel usually needs an instance if it behaves like ProjectModel
-    chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
+    chunk_model = await ChunkModel.create_instance(db_session=db_session)
 
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
@@ -80,8 +82,8 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     )
 
 @nlp_router.get("/index/info/{project_id}")
-async def get_project_index_info(request: Request, project_id: int):
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+async def get_project_index_info(request: Request, project_id: int, db_session: AsyncSession = Depends(get_db)):
+    project_model = await ProjectModel.create_instance(db_session=db_session)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     nlp_controller = NLPAsyncController(
@@ -102,8 +104,8 @@ async def get_project_index_info(request: Request, project_id: int):
     )
 
 @nlp_router.post("/index/search/{project_id}")
-async def search_index(request: Request, project_id: int, search_request: SearchRequest):
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+async def search_index(request: Request, project_id: int, search_request: SearchRequest, db_session: AsyncSession = Depends(get_db)):
+    project_model = await ProjectModel.create_instance(db_session=db_session)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     nlp_controller = NLPAsyncController(
@@ -134,8 +136,8 @@ async def search_index(request: Request, project_id: int, search_request: Search
     )
 
 @nlp_router.post("/index/answer/{project_id}")
-async def inswer_index(request: Request, project_id: int, search_request: SearchRequest):
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+async def inswer_index(request: Request, project_id: int, search_request: SearchRequest, db_session: AsyncSession = Depends(get_db)):
+    project_model = await ProjectModel.create_instance(db_session=db_session)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     nlp_controller = NLPAsyncController(

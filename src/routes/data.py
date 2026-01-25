@@ -12,6 +12,9 @@ from models import AssetTypeEnum
 from models.db_schemas import DataChunk, Asset
 from controllers import ProcessAsyncController
 
+# NEW: Import your db helper and type hint
+from helpers.db import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import aiofiles
 import logging
@@ -25,9 +28,11 @@ data_router = APIRouter(
 
 @data_router.post("/upload/{project_id}")
 async def upload_data(request: Request, project_id: int, file: UploadFile,
-                      app_settings: Settings = Depends(get_settings)):
+                      app_settings: Settings = Depends(get_settings),
+                      db_session: AsyncSession = Depends(get_db)): # Added session dependency
 
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    # UPDATE: Pass db_session instead of db_client
+    project_model = await ProjectModel.create_instance(db_session=db_session)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     data_controller = DataAsyncController()
@@ -39,7 +44,6 @@ async def upload_data(request: Request, project_id: int, file: UploadFile,
             content={"signal": result_signal}
         )
 
-    # UPDATED: Added await for async path generation
     file_path, file_id = await data_controller.generate_unique_filepath(
         org_file_name=file.filename,
         project_id=project_id
@@ -56,9 +60,9 @@ async def upload_data(request: Request, project_id: int, file: UploadFile,
             content={"signal": ResponseSignal.FILE_UPLOAD_FAILED.value}
         )
 
-    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    # UPDATE: Pass db_session
+    asset_model = await AssetModel.create_instance(db_session=db_session)
     
-    # Use await for os.path.getsize via asyncio.to_thread for better scale
     import asyncio
     file_size = await asyncio.to_thread(os.path.getsize, file_path)
 
@@ -80,26 +84,21 @@ async def upload_data(request: Request, project_id: int, file: UploadFile,
     )
     
 @data_router.post("/process/{project_id}")
-async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest):
-    """
-    Asynchronously processes files into chunks and stores them in MongoDB.
-    Offloads heavy I/O and CPU tasks to maintain high concurrency.
-    """
+async def process_endpoint(request: Request, project_id: int, process_request: ProcessRequest,
+                           db_session: AsyncSession = Depends(get_db)): # Added session dependency
+    
     chunk_size = process_request.chunk_size
     overlap_size = process_request.overlap_size
 
-    # Initialize Async Models
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
-    chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
-    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    # UPDATE: Pass db_session to all model instances
+    project_model = await ProjectModel.create_instance(db_session=db_session)
+    chunk_model = await ChunkModel.create_instance(db_session=db_session)
+    asset_model = await AssetModel.create_instance(db_session=db_session)
     
-    # Get or create project
     project = await project_model.get_project_or_create_one(project_id=project_id)
     
-    # Use the new Async Controller
     process_controller = ProcessAsyncController(project_id=project_id)
     
-    # 1. Logic to identify which files to process
     project_file_ids = {}
     if process_request.file_id:
         asset_record = await asset_model.get_asset_record(
@@ -114,7 +113,6 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
                 content={"signal": ResponseSignal.FILE_NOT_FOUND_IN_PROJECT.value}
             )
     else:
-        # Retrieve all file assets for the project
         project_assets = await asset_model.get_all_project_assets(
             asset_project_id=project.project_id, 
             asset_type=AssetTypeEnum.FILE.value
@@ -127,22 +125,18 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
             content={"signal": ResponseSignal.NO_FILES_IN_PROJECT.value}
         )
     
-    # 2. Optional reset of previous chunks
     if process_request.do_reset == 1:
         await chunk_model.delete_chunks_by_project_id(project_id=project.project_id)
 
     total_inserted = 0
 
-    # 3. Process each file asynchronously
     for asset_id, file_name in project_file_ids.items():
-        # Await the content loading (now offloaded to a thread internally)
         file_content = await process_controller.get_file_content(file_id=file_name)
 
         if not file_content:
             logger.warning(f"Skipping file {file_name}: unable to load content.")
             continue
 
-        # Await the CPU-heavy text splitting (now offloaded to a thread internally)
         file_chunks = await process_controller.process_file_content(
             file_content=file_content,
             chunk_size=chunk_size,
@@ -150,7 +144,6 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
         )
 
         if file_chunks:
-            # Map LangChain documents to your DataChunk
             file_chunks_records = [
                 DataChunk(
                     chunk_text=chunk.page_content,
@@ -162,7 +155,6 @@ async def process_endpoint(request: Request, project_id: int, process_request: P
                 for i, chunk in enumerate(file_chunks)
             ]
             
-            # Bulk insert chunks into MongoDB (already async)
             total_inserted += await chunk_model.insert_many_chunks(chunks=file_chunks_records)
 
     return JSONResponse(
